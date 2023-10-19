@@ -2,7 +2,7 @@ bl_info = {
     "name": "Rigi-All",
     "description": "Helps convert a humanoid rig to a Rigify rig",
     "author": "hisanimations",
-    "version": (1, 0),
+    "version": (1, 1),
     "blender": (3, 4, 0),
     "location": "View3D > Rigi-All",
     "warning": "", # used for warning icon and text in addons panel
@@ -36,6 +36,10 @@ class bfl_OT_makeArm(ot):
     isLeft: boolprop(name='isLeft', default=False)
     bl_options = {'UNDO'}
     
+    @classmethod
+    def poll(cls, context):
+        return len(bpy.context.selected_pose_bones) > 1
+    
     def execute(self, context):
         obj = context.object
         props = context.scene.rigiall_props
@@ -47,7 +51,7 @@ class bfl_OT_makeArm(ot):
         for bone in bones:
             for keyword in props.keywords.split(','):
                 bone.name = bone.name.replace(keyword, '')
-            if not bone.name.endswith('.L' if self.isLeft else '.R'):
+            if (not bone.name.endswith('.L' if self.isLeft else '.R') or not bone.name.endswith('_L' if self.isLeft else '_R')) and props.fix_symmetry:
                 bone.name +='.L' if self.isLeft else '.R'
         bone_list = tuple((bone.name for bone in bones))
         mode(mode='EDIT')
@@ -91,6 +95,10 @@ class bfl_OT_makeLeg(ot):
     isLeft: boolprop(name='Is Left', default=False)
     bl_options = {'UNDO'}
     
+    @classmethod
+    def poll(cls, context):
+        return len(bpy.context.selected_pose_bones) > 1
+    
     def execute(self, context):
         obj = bpy.context.object
         obj.data.layers = [True]*32
@@ -102,7 +110,7 @@ class bfl_OT_makeLeg(ot):
         for bone in bones:
             for keyword in props.keywords.split(','):
                 bone.name = bone.name.replace(keyword, '')
-            if not bone.name.endswith('.L' if self.isLeft else '.R'):
+            if (not bone.name.endswith('.L' if self.isLeft else '.R') or not bone.name.endswith('_L' if self.isLeft else '_R')) and props.fix_symmetry:
                 bone.name +='.L' if self.isLeft else '.R'
         bone_list = tuple((bone.name for bone in bones))
         mode(mode='EDIT')
@@ -160,6 +168,18 @@ class bfl_OT_makeSpine(ot):
     bl_description = 'Select a chain of bones to make them a Rigify Spine'
     bl_options = {'UNDO'}
     
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+    
+    def draw(self, context):
+        layout = self.layout
+        layout.label(text='Make sure that the pelvis is the beginning of the spine chain,')
+        layout.label(text='AND that the pelvis is the absolue root of the rig.')
+    
+    @classmethod
+    def poll(cls, context):
+        return len(bpy.context.selected_pose_bones) > 1
+    
     def execute(self, context):
         obj = bpy.context.object
         obj.data.layers = [True]*32
@@ -196,6 +216,10 @@ class bfl_OT_makeNeck(ot):
     bl_label = 'Make Neck/Head'
     bl_description = 'Select a chain of bones to make them a Rigify Head'
     bl_options = {'UNDO'}
+    
+    @classmethod
+    def poll(cls, context):
+        return len(bpy.context.selected_pose_bones) > 1
 
     def execute(self, context):    
         obj = bpy.context.object
@@ -252,7 +276,7 @@ class bfl_OT_makeFingers(ot):
         for bone in bones:
             for keyword in props.keywords.split(','):
                 bone.name = bone.name.replace(keyword, '')
-            if not bone.name.endswith('.L' if self.isLeft else '.R'):
+            if (not bone.name.endswith('.L' if self.isLeft else '.R') or not bone.name.endswith('_L' if self.isLeft else '_R')) and props.fix_symmetry:
                 bone.name +='.L' if self.isLeft else '.R'
         fingers = []
         current = []
@@ -348,7 +372,7 @@ class bfl_OT_makeShoulder(ot):
         for bone in bones:
             for keyword in props.keywords.split(','):
                 bone.name = bone.name.replace(keyword, '')
-            if not bone.name.endswith('.L' if self.isLeft else '.R'):
+            if (not bone.name.endswith('.L' if self.isLeft else '.R') or not bone.name.endswith('_L' if self.isLeft else '_R')) and props.fix_symmetry:
                 bone.name +='.L' if self.isLeft else '.R'
             if not bone.name in mod_bones: mod_bones.append(bone.name)
             bone.rigify_type = 'basic.super_copy'
@@ -380,6 +404,7 @@ class bfl_OT_makeExtras(ot):
 class bfl_group(bpy.types.PropertyGroup):
     ik_fingers: boolprop(name='IK Fingers', default=False)
     keywords: StringProperty(name='', description="Replaces/deletes symmetry keywords to fit Blender's symmetry naming scheme")
+    fix_symmetry: boolprop(name='Fix Symmetry', description='Disable if bones already end in ".L/_L" or ".R/_R"', default=True)
 
 class bfl_OT_help(ot):
     bl_idname = 'bfl.symmetryhelp'
@@ -439,7 +464,17 @@ class bfl_OT_initialize(ot):
             rLayers[ind].name = items[0]
             rLayers[ind].row = items[1]
             rLayers[ind].group = items[2]
+
+        mode_bak = bpy.context.object.mode
+        
+        mode(mode='EDIT')
+
+        for bone in bpy.context.object.data.edit_bones:
+            bone.use_connect = False
             
+        mode(mode=mode_bak)
+        bpy.context.object.data['INITIALIZED'] = True
+
         return {'FINISHED'}
     
 class bfl_OT_tweakMesh(ot):
@@ -473,14 +508,22 @@ class BFL_PT_panel(bpy.types.Panel):
             layout.row().label(text='Enter pose mode!')
             return None
         
+        if not bpy.context.object.data.get('INITIALIZED'):
+             layout.row().label(text='Initialize the rig!')
+             return None
+        
         layout.row().label(text='Symmetry Keywords, separate with ","')
         row = layout.row()
         row.prop(props, 'keywords')
         row.operator('bfl.symmetryhelp', text='', icon='QUESTION')
+        layout.row().prop(props, 'fix_symmetry')
         bone = context.active_pose_bone
         if bone != None:
             axis, roll = bone.bone.AxisRollFromMatrix(bone.matrix.to_3x3(), axis=bone.y_axis)
             layout.row().label(text=f'Current Bone Roll: {round(degrees(roll), 3)}')
+
+        if len(bpy.context.selected_pose_bones) == 1:
+            layout.label(text='Selected enough bones to form a chain!')
         
         layout.row().label(text='Arms:')
         op = layout.row().operator('bfl.makearm', text='Make Left Arm')
