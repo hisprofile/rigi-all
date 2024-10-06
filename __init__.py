@@ -2,7 +2,7 @@ bl_info = {
     "name": "Rigi-All",
     "description": "Helps convert a humanoid rig to a Rigify rig",
     "author": "hisanimations",
-    "version": (1, 3),
+    "version": (1, 4),
     "blender": (4, 0, 0),
     "location": "View3D > Rigi-All",
     "warning": "", # used for warning icon and text in addons panel
@@ -12,13 +12,25 @@ bl_info = {
 }
 
 import bpy
-from bpy.types import Operator as ot
+from bpy.types import Operator
 from bpy.props import BoolProperty as boolprop
 from bpy.props import *
-from math import degrees
+from math import degrees    
 
 mode = bpy.ops.object.mode_set
 
+#def edit_mode():
+#
+
+class ot(Operator):
+    mode: BoolProperty(default=False)
+
+    def invoke(self, context, event: bpy.types.Event):
+        if event.shift:
+            self.mode = True
+        else:
+            self.mode = False
+        return self.execute(context)
 
 '''
 
@@ -27,8 +39,56 @@ the original name of the addon.
 
 '''
 
-def mark(bone):
-    bone['marked'] = True
+def mark(pbone):
+    pbone['marked'] = True
+    if isinstance(pbone, bpy.types.PoseBone):
+        pbone.bone['marked'] = True
+
+def isolate(context: bpy.types.Context, object):
+    [obj.select_set(False) for obj in bpy.data.objects]
+    object.select_set(True)
+    context.view_layer.objects.active = object
+
+class bfl_OT_genericText(bpy.types.Operator):
+    bl_idname = 'bfl.textbox'
+    bl_label = 'Hints'
+    bl_description = 'A window will display any possible questions you have'
+
+    text: StringProperty(default='')
+    icons: StringProperty()
+    size: StringProperty()
+    width: IntProperty(default=400)
+    url: StringProperty(default='')
+    mode: BoolProperty()
+
+    def invoke(self, context, event):
+        if not getattr(self, 'prompt', True):
+            return self.execute(context)
+        self.mode = False
+        if event.shift and self.url != '':
+            self.mode = True
+            bpy.ops.wm.url_open(url=self.url)
+            return {'FINISHED'}
+        self.invoke_extra(context, event)
+        return context.window_manager.invoke_props_dialog(self, width=self.width)
+    
+    def invoke_extra(self, context, event):
+        pass
+    
+    def draw(self, context):
+        sentences = self.text.split('\n')
+        icons = self.icons.split(',')
+        sizes = self.size.split(',')
+        if self.text != '':
+            for sentence, icon, size in zip(sentences, icons, sizes):
+                textBox(self.layout, sentence, icon, int(size))
+        self.draw_extra(context)
+
+    def draw_extra(self, context):
+        pass
+
+    def execute(self, context):
+        return {'FINISHED'}
 
 class bfl_OT_makeArm(ot):
     
@@ -70,6 +130,8 @@ class bfl_OT_makeArm(ot):
             
         bone_list = tuple((bone.name for bone in bones))
         mode(mode='EDIT')
+        if self.mode:
+            bpy.ops.armature.calculate_roll()
         edits = obj.data.edit_bones
         edits[bone_list[0]].tail = edits[bone_list[1]].head
         for n, bone in enumerate(bone_list):
@@ -94,16 +156,31 @@ class bfl_OT_makeArm(ot):
         
         fk_col.name = 'Arm.R (FK)'
         tweak_col.name = 'Arm.R (Tweak)'
+
         return {'FINISHED'}
     
-class bfl_OT_makeLeg(ot):
+class bfl_OT_makeLeg(bfl_OT_genericText):
     
     bl_idname = 'bfl.makeleg'
     bl_label = 'Make leg'
     bl_description = 'Select a chain of bones to make them a Rigify leg'
     isLeft: boolprop(name='Is Left', default=False)
     bl_options = {'UNDO'}
+
+    rotation_axis: EnumProperty(
+        items = [
+            ('x', 'X manual', ''),
+            ('z', 'Z manual', ''),
+            ('automatic', 'Automatic', '')
+            ],
+        name="Primary Rotation Axis", default='x'
+        )
     
+    def draw_extra(self, context):
+        row = self.layout.row()
+        row.alignment = 'CENTER'
+        row.prop(self, 'rotation_axis')
+
     @classmethod
     def poll(cls, context):
         if context.object == None: return False
@@ -133,6 +210,8 @@ class bfl_OT_makeLeg(ot):
             
         bone_list = tuple((bone.name for bone in bones))
         mode(mode='EDIT')
+        if self.mode:
+            bpy.ops.armature.calculate_roll()
         edits = obj.data.edit_bones
         
         edits[bone_list[0]].tail = edits[bone_list[1]].head
@@ -162,6 +241,7 @@ class bfl_OT_makeLeg(ot):
         bones[0].rigify_type = 'limbs.leg'
         
         param = bones[0].rigify_parameters
+        param.rotation_axis = self.rotation_axis
         fk_col = param.fk_coll_refs.add()
         tweak_col = param.tweak_coll_refs.add()
         
@@ -177,20 +257,12 @@ class bfl_OT_makeLeg(ot):
         tweak_col.name = 'Leg.R (Tweak)'
         return {'FINISHED'}
         
-class bfl_OT_makeSpine(ot):
+class bfl_OT_makeSpine(bfl_OT_genericText):
     
     bl_idname = 'bfl.makespine'
     bl_label = 'Make Spine'
     bl_description = 'Select a chain of bones to make them a Rigify Spine'
     bl_options = {'UNDO'}
-    
-    def invoke(self, context, event):
-        return context.window_manager.invoke_props_dialog(self)
-    
-    def draw(self, context):
-        layout = self.layout
-        layout.label(text='Make sure that the pelvis is the beginning of the spine chain,')
-        layout.label(text='AND that the pelvis is the absolue root of the rig.')
     
     @classmethod
     def poll(cls, context):
@@ -209,6 +281,8 @@ class bfl_OT_makeSpine(ot):
             bone_col['Torso'].assign(bone.bone)
         bone_list = tuple((bone.name for bone in bones))
         mode(mode='EDIT')
+        if self.mode:
+            bpy.ops.armature.calculate_roll()
         edits = obj.data.edit_bones
         edits[bone_list[0]].tail = edits[bone_list[1]].head
         for n, bone in enumerate(bone_list):
@@ -252,6 +326,8 @@ class bfl_OT_makeNeck(ot):
             bone_col['Torso'].assign(bone.bone)
         bone_list = tuple((bone.name for bone in bones))
         mode(mode='EDIT')
+        if self.mode:
+            bpy.ops.armature.calculate_roll()
         edits = obj.data.edit_bones
         
         edits[bone_list[0]].tail = edits[bone_list[1]].head
@@ -271,18 +347,33 @@ class bfl_OT_makeNeck(ot):
         self.report({'INFO'}, 'Neck and head generated!')
         return {'FINISHED'}
     
-class bfl_OT_makeFingers(ot):
+class bfl_OT_makeFingers(bfl_OT_genericText):
     
     bl_idname = 'bfl.makefingers'
     bl_label = 'Make Fingers'
     bl_description = 'Select a chain of bones to make Rigify fingers'
     bl_options = {'UNDO'}
     isLeft: boolprop(name='isLeft', default=False)
+
+
+    primary_rotation_axis: EnumProperty(
+        items = [
+            ('automatic', 'Automatic', ''),
+            ('X', '+X manual', ''), ('Y', '+Y manual', ''), ('Z', '+Z manual', ''),
+            ('-X', '-X manual', ''), ('-Y', '-Y manual', ''), ('-Z', '-Z manual', '')
+            ],
+        name="Primary Rotation Axis", default='X'
+        )
     
     @classmethod
     def poll(cls, context):
         if context.object == None: return False
         return len(bpy.context.selected_pose_bones) > 1
+    
+    def draw_extra(self, context):
+        row = self.layout.row()
+        row.alignment = 'CENTER'
+        row.prop(self, 'primary_rotation_axis')
 
     def execute(self, context):
         obj = context.object
@@ -315,6 +406,8 @@ class bfl_OT_makeFingers(ot):
             boneLast = bone
             
         mode(mode='EDIT')
+        if self.mode:
+            bpy.ops.armature.calculate_roll()
         edits = obj.data.edit_bones
         
         for chain in fingers:
@@ -333,6 +426,7 @@ class bfl_OT_makeFingers(ot):
             tweak_col = param.tweak_coll_refs.add()
             tweak_col.name = 'Fingers (Detail)'
             param.make_extra_ik_control = props.ik_fingers
+            param.primary_rotation_axis = self.primary_rotation_axis
         self.report({'INFO'}, 'Fingers generated!')
         return {'FINISHED'}
     
@@ -404,7 +498,8 @@ class bfl_OT_makeShoulder(ot):
         param.make_deform = True
         self.report({'INFO'}, 'Shoulder generated!')
         return {'FINISHED'}
-    
+
+
 class bfl_OT_makeExtras(ot):
     bl_idname = 'bfl.extras'
     bl_label = 'Make Extras (Do This Last!)'
@@ -445,17 +540,26 @@ class bfl_OT_makeExtras(ot):
                 col.unassign(bone.bone)
             bone_col.assign(bone.bone)
             bone.rigify_type = 'basic.super_copy'
+            bone['extra'] = True
+            bone.bone['extra'] = True
             bone.rigify_parameters.super_copy_widget_type = self.widgets
         self.report({'INFO'}, 'Extra bones preserved! Select them and assign widgets in the bone tab!')
         return {'FINISHED'}
+
+
+def isArmature(self, a):
+    return a.type == 'ARMATURE'
 
 class bfl_group(bpy.types.PropertyGroup):
     ik_fingers: boolprop(name='IK Fingers', default=False)
     keywords: StringProperty(name='', description="Replaces/deletes symmetry keywords to fit Blender's symmetry naming scheme")
     fix_symmetry: boolprop(name='Fix Symmetry', description='Disable if bones already end in ".L/_L" or ".R/_R"', default=False)
 
+    parasite: PointerProperty(type=bpy.types.Object, poll=isArmature)
+    host: PointerProperty(type=bpy.types.Object, poll=isArmature)
+
 def textBox(self, sentence, icon='NONE', line=56):
-    layout = self
+    layout = self.box().column()
     sentence = sentence.split(' ')
     mix = sentence[0]
     sentence.pop(0)
@@ -477,29 +581,6 @@ def textBox(self, sentence, icon='NONE', line=56):
             if sentence == []:
                 layout.row().label(text=mix)
                 return None
-
-class HISANIM_OT_genericText(bpy.types.Operator):
-    bl_idname = 'generic.textbox'
-    bl_label = 'Hints'
-    bl_description = 'A window will display any possible questions you have'
-
-    text: StringProperty(default='')
-    icons: StringProperty()
-    size: StringProperty()
-    width: IntProperty(default=400)
-
-    def invoke(self, context, event):
-        return context.window_manager.invoke_props_dialog(self, width=self.width)
-    
-    def draw(self, context):
-        sentences = self.text.split('\n')
-        icons = self.icons.split(',')
-        sizes = self.size.split(',')
-        for sentence, icon, size in zip(sentences, icons, sizes):
-            textBox(self.layout, sentence, icon, int(size))
-
-    def execute(self, context):
-        return {'FINISHED'}
 
 class bfl_OT_initialize(ot):
     bl_idname = 'bfl.init'
@@ -559,13 +640,140 @@ class bfl_OT_tweakMesh(ot):
     bl_label = 'Fix Mesh'
     bl_description = 'Change the name of weight paints to be compatible with the rig.'
     bl_options = {'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return getattr(context.object, 'type', None) == 'MESH'
     
     def execute(self, context):
+        if context.object.parent != None:
+            if context.object.parent.type == 'ARMATURE':
+                par = context.object.parent
+                if par.data.collections.get('underlying'):
+                    self.report({'ERROR'}, "You do not have to Fix Mesh if the rig you are attaching to has been merged!")
+                    return {'CANCELLED'}
         for obj in context.selected_objects:
             if obj.type != 'MESH': continue
             for group in obj.vertex_groups:
                 if not group.name.startswith('DEF-'):
                     group.name = 'DEF-'+group.name
+        return {'FINISHED'}
+    
+class bfl_OT_tweakArmature(ot):
+    bl_idname = 'bfl.tweakarmature'
+    bl_label = 'Fix Merged Armature'
+    bl_description = 'Change the name of bones to be compatible with the mesh. Use only on merged armatures'
+    bl_options = {'UNDO'}
+    
+    @classmethod
+    def poll(cls, context):
+        return getattr(context.object, 'type', None) == 'ARMATURE'
+    
+    def execute(self, context):
+        if context.object.get('rig_ui') == None:
+            self.report({'ERROR'}, 'Use on a rigify rig!')
+            return {'CANCELLED'}
+        if context.object.data.collections.get('underlying') == None:
+            self.report({'ERROR'}, 'Use on a merged Rigify rig!')
+        for bone in context.object.pose.bones:
+            if not bone.get('needs_fix', False): continue
+            bone.bone.use_deform = True
+
+        bone_list = map(lambda a: a.name, context.object.data.collections['underlying'].bones)
+        mode(mode='EDIT')
+        ebones = context.object.data.edit_bones
+        for bone in bone_list:
+            ebone = ebones[bone]
+            par_ebone_name = getattr(ebone.parent, 'name', '')
+            if par_ebone_name.startswith('ORG-'):
+                new_bone_name = par_ebone_name.replace('ORG-', 'DEF-')
+                if (new_par := ebones.get(new_bone_name)):
+                    ebone.parent = new_par
+        mode(mode='OBJECT')
+        return {'FINISHED'}
+    
+class bfl_OT_merge(ot):
+    bl_idname = 'bfl.merge'
+    bl_label = 'Merge Armatures'
+    bl_description = 'Have the original rig underlay the meta-rig'
+    bl_options = {'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        props = context.scene.rigiall_props
+        return bool(props.parasite) & bool(props.host)
+
+    def execute(self, context):
+        props = context.scene.rigiall_props
+        parasite: bpy.types.Object = props.parasite
+        host: bpy.types.Object = props.host
+
+        isolate(context, parasite)
+        mode(mode='EDIT')
+
+        for bone in parasite.data.edit_bones:
+            bone: bpy.types.EditBone
+            if (hbone := host.data.bones.get(bone.name)) == None: continue
+            if hbone.get('extra'):
+                parasite.data.edit_bones.remove(bone)
+
+        mode(mode='OBJECT')
+
+        for bone in host.data.bones:
+            if not bone.get('marked', False): continue
+            bone.name = '!' + bone.name
+
+        current_bones = set(map(lambda a: a.name, host.data.bones))
+
+        parasite.matrix_world = host.matrix_world
+        isolate(context, host)
+        parasite.select_set(True)
+        bpy.ops.object.join()
+
+        new_bones = set(map(lambda a: a.name, host.data.bones)) - current_bones
+        marked = set(map(lambda a: a.name, filter(lambda a: a.get('marked'), host.data.bones)))
+        extras = set(map(lambda a: a.name, filter(lambda a: a.get('extra'), host.data.bones)))
+
+        new_col = host.data.collections.new('underlying')
+
+        mode(mode='EDIT')
+        ebones = host.data.edit_bones
+        for bone in new_bones:
+            ebone = ebones.get(bone)
+            if not ebone: continue
+            p_ebone = ebones.get('!'+bone)
+            if not p_ebone:
+                ebones.remove(ebone)
+                continue
+            ebone.parent = p_ebone
+            new_col.assign(host.data.bones[bone])
+
+        for bone in extras:
+            ebone = ebones.get(bone)
+            if not ebone: continue
+            if not getattr(ebone.parent, 'name', '').startswith('!'): continue
+            if not (p_ebone := ebones.get(ebone.parent.name[1:])): continue
+            ebone.parent = p_ebone
+        mode(mode='POSE')
+
+        for bone in new_bones:
+            pbone = host.pose.bones.get(bone)
+            if not pbone: continue
+            pbone.rigify_type = 'basic.raw_copy'
+            new_col.assign(pbone.bone)
+            pbone['needs_fix'] = True
+            pbone.bone['needs_fix'] = True
+
+        for bone in extras:
+            pbone = host.pose.bones.get(bone)
+            if not pbone: continue
+            pbone.rigify_type = 'basic.raw_copy'
+            pbone.rigify_parameters.optional_widget_type = pbone.rigify_parameters.super_copy_widget_type
+            pbone['needs_fix'] = True
+            pbone.bone['needs_fix'] = True
+
+        mode(mode='OBJECT')
+
         return {'FINISHED'}
     
 class BFL_PT_panel(bpy.types.Panel):
@@ -579,29 +787,55 @@ class BFL_PT_panel(bpy.types.Panel):
         props = context.scene.rigiall_props
         layout = self.layout
         
+        #if getattr(context.object, 'type', None) != 'ARMATURE':
+        #    layout.row().label(text='Select an armature!')
+        #    return None
+        
+        layout.row().operator('bfl.tweakmesh')
+        layout.row().operator('bfl.tweakarmature')
+        layout.row().operator('bfl.init')
+
+        layout.separator()
+
+        if getattr(context.object, 'mode', 'OBJECT') == 'OBJECT':
+            row = layout.row()
+            row.label(text='Merge Armature')
+            op = row.operator('bfl.textbox', icon='QUESTION', text="What's this?")
+            op.text = '''This tool merges the meta-rig with the original rig, preserving the original rig. If you are familiar with my TF2 ports and how cosmetics can be attached to mercenaries, this makes that possible.
+Do not use "Fix Mesh!" It is not required with a merged rig. Instead, use Fix Armature to allow the mesh to follow the armature.'''
+            op.icons = 'QUESTION,ERROR'
+            op.size = '56,56'
+            op.width=330
+
+            box = layout.box()
+
+            box.prop(props, 'parasite', text='Original Rig')
+            box.prop(props, 'host', text='Target Rig')
+            if props.host and not bool(getattr(props.host, 'data', {}).get('INITIALIZED')):
+                row = box.row()
+                row.alert = True
+                row.label(text='Target is not a meta-rig!')
+            box.operator('bfl.merge')
+
         if context.object == None:
             return None
-        
-        if bpy.context.object.get('rig_ui'):
+
+        if context.object.get('rig_ui'):
              layout.row().label(text='This is a Rigify rig!')
              return None
         
-        layout.row().operator('bfl.tweakmesh')
-        
-        layout.row().operator('bfl.init')
-        
-        if bpy.context.object.mode != 'POSE':
+        if context.object.mode != 'POSE':
             layout.row().label(text='Enter pose mode!')
             return None
         
-        if not bpy.context.object.data.get('INITIALIZED'):
+        if not context.object.data.get('INITIALIZED'):
              layout.row().label(text='Initialize the rig!')
              return None
          
         layout.row().label(text='Symmetry Keywords, separate with ","')
         row = layout.row()
         row.prop(props, 'keywords')
-        op = row.operator('generic.textbox', text='', icon='QUESTION')
+        op = row.operator('bfl.textbox', text='', icon='QUESTION')
         op.text = 'This helps to format bone names to make them compatible for symmetry posing. For example, if you have a pair of bones named "upper_r_arm.R" and "upper_l_arm.L", symmetry will not be supported. However, if you add "_l_,_r_" in the string field, then the bones will be renamed to "upperarm.R" and "upperarm.L", making them compatible with symmetry.'
         op.size = '56'
         op.icons='NONE'
@@ -613,45 +847,64 @@ class BFL_PT_panel(bpy.types.Panel):
             layout.row().label(text=f'Current Bone Roll: {round(degrees(roll), 3)}')
 
         if len(bpy.context.selected_pose_bones) == 1:
-            layout.label(text='Selected enough bones to form a chain!')
+            layout.label(text='Select enough bones to form a chain!')
         
-        layout.row().label(text='Arms:')
-        op = layout.row().operator('bfl.makearm', text='Make Left Arm')
+        layout.row().label(text='Arms')
+        box = layout.box()
+        op = box.row().operator('bfl.makearm', text='Make Left Arm')
         op.isLeft = True
-        op = layout.row().operator('bfl.makearm', text='Make Right Arm')
+        op = box.row().operator('bfl.makearm', text='Make Right Arm')
         op.isLeft = False
         
-        op = layout.row().operator('bfl.makefingers', text='Make Left Fingers')
+        op = box.row().operator('bfl.makefingers', text='Make Left Fingers')
         op.isLeft = True
-        op = layout.row().operator('bfl.makefingers', text='Make Right Fingers')
+        op.text = 'Rotating towards the selected axis should curl the fingers inward. +X Manual by default.'
+        op.size = '56'
+        op.icons = 'BLANK1'
+        op = box.row().operator('bfl.makefingers', text='Make Right Fingers')
+        op.text = 'Rotating towards the selected axis should curl the fingers inward. +X Manual by default.'
+        op.size = '56'
+        op.icons = 'BLANK1'
         op.isLeft = False
-        layout.row().prop(context.scene.rigiall_props, 'ik_fingers')
+        box.row().prop(context.scene.rigiall_props, 'ik_fingers')
         
-        layout.row().label(text='Legs:')
-        op = layout.row().operator('bfl.makeleg', text='Make Left Leg')
+        layout.row().label(text='Legs')
+        box = layout.box()
+        op = box.row().operator('bfl.makeleg', text='Make Left Leg')
+        op.text = 'The bones should rotate around this axis. X Manual by default.'
+        op.size = '56'
+        op.icons = 'BLANK1'
         op.isLeft = True
-        op = layout.row().operator('bfl.makeleg', text='Make Right Leg')
+        op = box.row().operator('bfl.makeleg', text='Make Right Leg')
+        op.text = 'The bones should rotate around this axis. X Manual by default.'
+        op.size = '56'
+        op.icons = 'BLANK1'
         op.isLeft = False
         
-        layout.row().label(text='Torso:')
-        layout.row().operator('bfl.makespine', text='Make Spine')
+        layout.row().label(text='Torso')
+        box = layout.box()
+        op = box.row().operator('bfl.makespine', text='Make Spine')
+        op.text = 'Make sure that the pelvis is the beginning of the spine chain, AND that the pelvis is the absolue root of the rig.'
+        op.size = '64'
+        op.icons = 'BLANK1'
+        op.width = 360
+        box.row().operator('bfl.makeneck', text='Make Neck/Head')
         
-        layout.row().operator('bfl.makeneck', text='Make Neck/Head')
-        
-        op = layout.row().operator('bfl.makeshoulder', text='Make Left Shoulder')
+        op = box.row().operator('bfl.makeshoulder', text='Make Left Shoulder')
         op.isLeft = True
-        op = layout.row().operator('bfl.makeshoulder', text='Make Right Shoulder')
+        op = box.row().operator('bfl.makeshoulder', text='Make Right Shoulder')
         op.isLeft = False
         
         layout.row().label(text='Misc.')
-        layout.row().operator('bfl.extras')
-        op = layout.row().operator('bfl.adjustroll', text='Roll by 90°')
+        box = layout.box()
+        box.row().operator('bfl.extras')
+        op = box.row().operator('bfl.adjustroll', text='Roll by 90°')
         op.roll = 90
 
-        op = layout.row().operator('bfl.adjustroll', text='Roll by -90°')
+        op = box.row().operator('bfl.adjustroll', text='Roll by -90°')
         op.roll = -90
         
-        layout.row().operator('bfl.noroll')
+        box.row().operator('bfl.noroll')
 
         #row.label(text='', icon='CHECKMARK' if bpy.context.object.data.get('bfl_LEFT') else 'CANCEL')
         
@@ -666,10 +919,12 @@ classes = [bfl_OT_makeArm,
     bfl_OT_makeExtras,
     bfl_OT_initialize,
     bfl_OT_tweakMesh,
+    bfl_OT_tweakArmature,
+    bfl_OT_merge,
     bfl_group,
     bfl_OT_90roll,
     bfl_OT_0roll,
-    HISANIM_OT_genericText
+    bfl_OT_genericText,
     ]        
 
 def register():
