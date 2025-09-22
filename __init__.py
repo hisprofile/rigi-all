@@ -550,14 +550,6 @@ class bfl_OT_makeExtras(ot):
 def isArmature(self, a):
     return a.type == 'ARMATURE'
 
-class bfl_group(bpy.types.PropertyGroup):
-    ik_fingers: boolprop(name='IK Fingers', default=False)
-    keywords: StringProperty(name='', description="Replaces/deletes symmetry keywords to fit Blender's symmetry naming scheme")
-    fix_symmetry: boolprop(name='Fix Symmetry', description='Disable if bones already end in ".L/_L" or ".R/_R"', default=False)
-
-    parasite: PointerProperty(type=bpy.types.Object, poll=isArmature)
-    host: PointerProperty(type=bpy.types.Object, poll=isArmature)
-
 def textBox(self, sentence, icon='NONE', line=56):
     layout = self.box().column()
     sentence = sentence.split(' ')
@@ -655,8 +647,8 @@ class bfl_OT_tweakMesh(ot):
         for obj in context.selected_objects:
             if obj.type != 'MESH': continue
             for group in obj.vertex_groups:
-                if not group.name.startswith('DEF-'):
-                    group.name = 'DEF-'+group.name
+                if group.name.startswith('DEF-'): continue
+                group.name = 'DEF-'+group.name
         return {'FINISHED'}
     
 class bfl_OT_tweakArmature(ot):
@@ -801,8 +793,10 @@ class BFL_PT_panel(bpy.types.Panel):
             row = layout.row()
             row.label(text='Merge Armature')
             op = row.operator('bfl.textbox', icon='QUESTION', text="What's this?")
-            op.text = '''This tool merges the meta-rig with the original rig, preserving the original rig. If you are familiar with my TF2 ports and how cosmetics can be attached to mercenaries, this makes that possible.
-Do not use "Fix Mesh!" It is not required with a merged rig. Instead, use Fix Armature to allow the mesh to follow the armature.'''
+#            op.text = '''This tool merges the meta-rig with the original rig, preserving the original rig. If you are familiar with my TF2 ports and how cosmetics can be attached to mercenaries, this makes that possible.
+#Do not use "Fix Mesh!" It is not required with a merged rig. Instead, use Fix Armature to allow the mesh to follow the armature.'''
+            op.text = '''This tool overlays the original rig onto the meta-rig, preserving the original rig's bone orientations without compromising on a Rigify Rig.
+Do not use "Fix Mesh"! Instead, use "Fix Armature" on the generated Rigify rig to ensure the mesh follows the armature.'''
             op.icons = 'QUESTION,ERROR'
             op.size = '56,56'
             op.width=330
@@ -821,17 +815,17 @@ Do not use "Fix Mesh!" It is not required with a merged rig. Instead, use Fix Ar
             return None
 
         if context.object.get('rig_ui'):
-             layout.row().label(text='This is a Rigify rig!')
-             return None
+            layout.row().label(text='This is a Rigify rig!')
+            return None
         
         if context.object.mode != 'POSE':
             layout.row().label(text='Enter pose mode!')
             return None
         
         if not context.object.data.get('INITIALIZED'):
-             layout.row().label(text='Initialize the rig!')
-             return None
-         
+            layout.row().label(text='Initialize the rig!')
+            return None
+
         layout.row().label(text='Symmetry Keywords, separate with ","')
         row = layout.row()
         row.prop(props, 'keywords')
@@ -908,6 +902,25 @@ Do not use "Fix Mesh!" It is not required with a merged rig. Instead, use Fix Ar
 
         #row.label(text='', icon='CHECKMARK' if bpy.context.object.data.get('bfl_LEFT') else 'CANCEL')
         
+class bfl_group(bpy.types.PropertyGroup):
+    ik_fingers: boolprop(name='IK Fingers', default=False)
+    keywords: StringProperty(name='', description="Replaces/deletes symmetry keywords to fit Blender's symmetry naming scheme")
+    symmetry_left_keyword: StringProperty(name='Symmetry Left Keyword', description='Fixes left symmetry keywords to ensure they are compatible with Blender\'s naming scheme')
+    symmetry_right_keyword: StringProperty(name='Symmetry Right Keyword', description='Fixes right symmetry keywords to ensure they are compatible with Blender\'s naming scheme')
+    fix_symmetry: boolprop(name='Fix Symmetry Name', description='Disable if bones already end in ".L/_L" or ".R/_R"', default=False)
+
+    parasite: PointerProperty(type=bpy.types.Object, poll=isArmature)
+    host: PointerProperty(type=bpy.types.Object, poll=isArmature)
+
+    symmetry_mode: EnumProperty(items=[
+        ('X_POSITIVE', '+X', 'The right side of the armature is on the positive side of the X axis.'),
+        ('X_NEGATIVE', '-X', 'The right side of the armature is on the negative side of the X axis.'),
+        ('Y_POSITIVE', '+Y', 'The right side of the armature is on the positive side of the Y axis.'),
+        ('Y_NEGATIVE', '-Y', 'The right side of the armature is on the negative side of the Y axis.'),
+        ],
+        name='Symmetry Mode',
+        description='Set the symmetry mode for automatic limb assignments',
+        default='X_POSITIVE')
         
 classes = [bfl_OT_makeArm,
     bfl_OT_makeFingers,
