@@ -100,11 +100,15 @@ If you are familiar with the TF2-Trifecta, this is what allows cosmetics to seam
 
 ## Clean Up Tools (Post Rig Generation)
 ### Add "DEF-" to Vertex Groups
+- Not required on a merged armature
+
 By default, the mesh will not follow the generated Rigify Rig due to having mismatched vertex group and bone names. 
 
 Therefore, using this on all selected mesh objects will prepend "DEF-" to the required vertex groups, aligning the vertex groups with the armature.
 
 ### Remove "DEF-" from Bone Names
+- Not required on a merged armature
+
 By default, the mesh will not follow the generated Rigify Rig due to having mismatched vertex group and bone names.
 
 Therefore, using this on the Rigify Rig will remove the "DEF-" prefix on the required bones, aligning the bones to the vertex groups. While it works, this option is *extremely* destructive to the rig and is not recommended. Use the former tool if possible.
