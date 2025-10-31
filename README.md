@@ -15,7 +15,7 @@ Everything is placed in a side-panel in the 3D viewport. The default category fo
 To use Rigi-All on a rig, you must use its "Initialize" feature. It will create bone collections that future limbs will be placed in, as well as assign a post-generation script to clean up the final rig.
 
 ### Automatic Symmetry Feature
-The limb generation tools can make two Rigify limbs from one or two selected chains, acting as a shortcut for the user. However, you are required to set the "Symmetry Mode" to what best suits the rig. Settings this correctly allows Rigi-All to correctly sort the bones. If the *Right* side of the rig is on the *negative side of the X axis*, you must set the Symmetry Mode to `-X`. This appears to be the default and safest option to use.
+The limb generation tools can make two Rigify limbs from one or two selected chains, acting as a shortcut for the user. However, you are required to set the "Symmetry Mode" to what best suits the rig. Settings this correctly allows Rigi-All to correctly sort the bones. If the *Right* side of the rig is on the *negative side of the X axis*, you must set the Symmetry Mode to `-X`. This appears to be the default and safest option to use. Set the Symmetry Mode to whatever suits your rig. If you feel you need to make corrections, don't forget to apply rotation.
 
 If you do not wish to use the Automatic Symmetry feature, simply turn it off in the Rigi-All panel, and use the left/right limb generation tools.
 
