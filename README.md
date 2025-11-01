@@ -43,7 +43,7 @@ Creates a Rigify Arm out of the selected chain of bones.
   - -/+Z manual
 - IK Fingers (Parameter, True or False)
 
-Creates Rigiy Fingers out of multiple selected chains.
+Creates Rigify Fingers out of multiple selected chains.
 
 ### Make Legs
 - Requires 4 selected bones per chain
@@ -119,3 +119,7 @@ Therefore, using this on the Rigify Rig will remove the "DEF-" prefix on the req
   - Clean Up ALL Shapes in Project
 
 Every bone on a Rigify Rig has a unique bone shape object. While they are visually similar to other objects, they are indeed their own. This tool de-duplicates these bone shapes, so those that are visually similar are then made the same object.
+
+# Credits
+- Letumgo, for helping with the logo
+- That Gray Cartoon Pony, for their wonderful Ivy rig & pose
