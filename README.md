@@ -1,5 +1,5 @@
 # Rigi-All
-![banner_1080](https://github.com/user-attachments/assets/2197bc45-6e27-4901-a246-387728a970a0)
+![banner_1080](https://github.com/user-attachments/assets/20c4e830-c6c3-4ff2-9689-5924bb057a02)
 
 ## Introduction
 Rigging tool for Blender. Speeds up limb generation for existing rigs, leaving as little to do as possible for the user.  
