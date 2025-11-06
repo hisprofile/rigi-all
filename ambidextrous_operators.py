@@ -83,21 +83,23 @@ class rigiall_ot_makearms(Operator):
             for prior, next in iter_two(bone_list):
                 edits[prior].tail = edits[next].head
                 edits[next].use_connect = True
-                    
             mode(mode='POSE')
-            chain[0].rigify_type = 'limbs.arm'
-            param = chain[0].rigify_parameters
-            param.ik_local_location = False
-            self.report({'INFO'}, 'Arm generated!')
-            fk_col = param.fk_coll_refs.add()
-            tweak_col = param.tweak_coll_refs.add()
-            
-            if side == left:
-                fk_col.name = 'Arm.L (FK)'
-                tweak_col.name = 'Arm.L (Tweak)'
-            if side == right:
-                fk_col.name = 'Arm.R (FK)'
-                tweak_col.name = 'Arm.R (Tweak)'
+            if hasattr(chain[0], 'rigify_parameters'):
+                chain[0].rigify_type = 'limbs.arm'
+                param = chain[0].rigify_parameters
+                param.ik_local_location = False
+                self.report({'INFO'}, 'Arm generated!')
+                fk_col = param.fk_coll_refs.add()
+                tweak_col = param.tweak_coll_refs.add()
+                
+                if side == left:
+                    fk_col.name = 'Arm.L (FK)'
+                    tweak_col.name = 'Arm.L (Tweak)'
+                if side == right:
+                    fk_col.name = 'Arm.R (FK)'
+                    tweak_col.name = 'Arm.R (Tweak)'
+            else:
+                self.report({'WARNING'}, 'Rigify is not enabled, limb generation could not be completed!')
 
         return {'FINISHED'}
 
@@ -205,23 +207,25 @@ class rigiall_ot_makelegs(rigiall_ot_genericText):
             
             mode(mode='POSE')
             mark(obj.pose.bones[heel_name])
-            
-            chain[0].rigify_type = 'limbs.leg'
-            param = chain[0].rigify_parameters
-            param.rotation_axis = self.rotation_axis
-            fk_col = param.fk_coll_refs.add()
-            tweak_col = param.tweak_coll_refs.add()
-            
-            param.ik_local_location = False
-            param.extra_ik_toe = True
-            self.report({'INFO'}, 'Leg generated! Adjust the heel bone(s) in edit mode!')
+            if hasattr(chain[0], 'rigify_parameters'):
+                chain[0].rigify_type = 'limbs.leg'
+                param = chain[0].rigify_parameters
+                param.rotation_axis = self.rotation_axis
+                fk_col = param.fk_coll_refs.add()
+                tweak_col = param.tweak_coll_refs.add()
+                
+                param.ik_local_location = False
+                param.extra_ik_toe = True
+                self.report({'INFO'}, 'Leg generated! Adjust the heel bone(s) in edit mode!')
 
-            if side is left:
-                fk_col.name = 'Leg.L (FK)'
-                tweak_col.name = 'Leg.L (Tweak)'
-            if side is right:
-                fk_col.name = 'Leg.R (FK)'
-                tweak_col.name = 'Leg.R (Tweak)'
+                if side is left:
+                    fk_col.name = 'Leg.L (FK)'
+                    tweak_col.name = 'Leg.L (Tweak)'
+                if side is right:
+                    fk_col.name = 'Leg.R (FK)'
+                    tweak_col.name = 'Leg.R (Tweak)'
+            else:
+                self.report({'WARNING'}, 'Rigify is not enabled, limb generation could not be completed!')
         return {'FINISHED'}    
 
 class rigiall_ot_makefingers(rigiall_ot_genericText):
@@ -284,16 +288,19 @@ class rigiall_ot_makefingers(rigiall_ot_genericText):
                 edits[next].use_connect = True
                     
         mode(mode='POSE')
-        for chain in bone_chains:
-            chain = tuple((bone.name for bone in chain))
-            bone = context.object.pose.bones.get(chain[0])
-            bone.rigify_type = 'limbs.super_finger'
-            param = bone.rigify_parameters
-            tweak_col = param.tweak_coll_refs.add()
-            tweak_col.name = 'Fingers (Detail)'
-            param.make_extra_ik_control = props.ik_fingers
-            param.primary_rotation_axis = self.primary_rotation_axis
-        self.report({'INFO'}, 'Fingers generated!')
+        if hasattr(bpy.types.PoseBone, 'rigify_parameters'):
+            for chain in bone_chains:
+                chain = tuple((bone.name for bone in chain))
+                bone = context.object.pose.bones.get(chain[0])
+                bone.rigify_type = 'limbs.super_finger'
+                param = bone.rigify_parameters
+                tweak_col = param.tweak_coll_refs.add()
+                tweak_col.name = 'Fingers (Detail)'
+                param.make_extra_ik_control = props.ik_fingers
+                param.primary_rotation_axis = self.primary_rotation_axis
+            self.report({'INFO'}, 'Fingers generated!')
+        else:
+            self.report({'WARNING'}, 'Rigify is not enabled, limb generation could not be completed!')
         return {'FINISHED'}
 
 class rigiall_ot_makeshoulders(Operator):
@@ -335,17 +342,20 @@ class rigiall_ot_makeshoulders(Operator):
                     
             for col in bone.bone.collections:
                 col.unassign(bone)
-
+        
         for chain in bone_chains:
             bone = chain[0]
-            obj.data.collections['Torso'].assign(bone.bone)
-            bone.rigify_type = 'basic.super_copy'
-            param = bone.rigify_parameters
-            param.make_control = True
-            param.make_widget = True
-            param.super_copy_widget_type = 'shoulder'
-            param.make_deform = True
-            self.report({'INFO'}, 'Shoulder generated!')
+            if hasattr(bone, 'rigify_parameters'):
+                obj.data.collections['Torso'].assign(bone.bone)
+                bone.rigify_type = 'basic.super_copy'
+                param = bone.rigify_parameters
+                param.make_control = True
+                param.make_widget = True
+                param.super_copy_widget_type = 'shoulder'
+                param.make_deform = True
+                self.report({'INFO'}, 'Shoulder generated!')
+            else:
+                self.report({'WARNING'}, 'Rigify is not enabled, limb generation could not be completed!')
         return {'FINISHED'}
 
 class rigiall_ot_make_generic_chain(Operator):
@@ -392,7 +402,10 @@ class rigiall_ot_make_generic_chain(Operator):
         if self.rigify_type == '': return {'FINISHED'}
         for chain in bone_chains:
             bone = chain[0]
-            bone.rigify_type = self.rigify_type
+            if hasattr(bone, 'rigify_parameters'):
+                bone.rigify_type = self.rigify_type
+            else:
+                self.report({'WARNING'}, 'Rigify is not enabled, limb generation could not be completed!')
 
         return {'FINISHED'}
 

@@ -91,7 +91,6 @@ def initialize_finalize_script(context: bpy.types.Context):
         with open(finalize_script_path, 'r') as file:
             finalize_script.write(file.read())
     return finalize_script
-    #new_text = data.texts.new('RIGI-ALL_FINALIZE_SCRIPT')
 
 class rigiall_prefs(AddonPreferences):
     bl_idname = __package__
@@ -154,10 +153,7 @@ def register():
     r()
     bpy.types.WindowManager.rigiall_props = bpy.props.PointerProperty(type=rigiall_group)
     bpy.types.PoseBone.rigi_all_mark = bpy.props.BoolProperty()
-    #bpy.types.Bone.rigi_all_mark = bpy.props.BoolProperty()
-
 def unregister():
     ur()
     del bpy.types.WindowManager.rigiall_props
     del bpy.types.PoseBone.rigi_all_mark
-    #del bpy.types.Bone.rigi_all_mark

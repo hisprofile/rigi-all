@@ -2,7 +2,7 @@ bl_info = {
     "name": "Rigi-All",
     "description": "Speeds up the Rigify process",
     "author": "hisanimations",
-    "version": (1, 5, 0),
+    "version": (1, 5, 1),
     "blender": (4, 0, 0),
     "location": "View3D > Rigi-All",
     "warning": "", # used for warning icon and text in addons panel

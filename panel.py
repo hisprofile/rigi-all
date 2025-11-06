@@ -47,20 +47,10 @@ class RIGIALL_PT_panel(Panel):
         layout.separator()
 
         if props.view == 'RIGGING':
-            if getattr(context.object, 'type', None) != 'ARMATURE':
-                pass
-            elif getattr(context.object, 'data', {}).get('RIGI-ALL_INITIALIZED'):
-                pass
-            elif context.object.get('rig_ui'):
-                pass
-            else:
-                layout.row().operator('rigiall.init')
             if getattr(context.object, 'mode', 'OBJECT') == 'OBJECT':
                 row = layout.row()
                 row.label(text='Merge Armature')
                 op = row.operator('rigiall.textbox', icon='QUESTION', text="What's this?")
-    #            op.text = '''This tool merges the meta-rig with the original rig, preserving the original rig. If you are familiar with my TF2 ports and how cosmetics can be attached to mercenaries, this makes that possible.
-    #Do not use "Fix Mesh!" It is not required with a merged rig. Instead, use Fix Armature to allow the mesh to follow the armature.'''
                 op.text = '''This tool overlays the original rig onto the meta-rig, preserving the original rig's bone orientations without compromising on a Rigify Rig.'''
                 op.icons = 'QUESTION'
                 op.size = '56'
@@ -76,8 +66,15 @@ class RIGIALL_PT_panel(Panel):
                     row.label(text='Target is not a meta-rig!')
                 box.operator('rigiall.merge')
 
-            if context.object == None:
+            if getattr(context.object, 'type', None) != 'ARMATURE':
+                layout.row().label(text='Select an armature!')
                 return None
+            elif getattr(context.object, 'data', {}).get('RIGI-ALL_INITIALIZED'):
+                pass
+            elif context.object.get('rig_ui'):
+                pass
+            else:
+                layout.row().operator('rigiall.init')
 
             if context.object.get('rig_ui'):
                 layout.row().label(text='This is a Rigify rig!')
