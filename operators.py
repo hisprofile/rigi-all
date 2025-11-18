@@ -122,6 +122,7 @@ class rigiall_ot_makeArm(Operator):
         if hasattr(bones[0], 'rigify_parameters'):
             bones[0].rigify_type = 'limbs.arm'
             param = bones[0].rigify_parameters
+            param.segments = 1
             param.ik_local_location = False
             self.report({'INFO'}, 'Arm generated!')
             fk_col = param.fk_coll_refs.add()
@@ -223,6 +224,7 @@ class rigiall_ot_makeLeg(rigiall_ot_genericText):
             bones[0].rigify_type = 'limbs.leg'
             
             param = bones[0].rigify_parameters
+            param.segments = 1
             param.rotation_axis = self.rotation_axis
             fk_col = param.fk_coll_refs.add()
             tweak_col = param.tweak_coll_refs.add()
@@ -799,6 +801,7 @@ class rigiall_ot_deduplicate_boneshapes(Operator):
         )
 
         for bone_shape in [*existing_bone_shapes, *all_bone_shapes]:
+            if not isinstance(getattr(bone_shape, 'data', None), bpy.types.Mesh): continue
             key = hash(tuple((round(axis, 6) for v in bone_shape.data.vertices[:10] for axis in v.co)))
             first = bone_shapes_master.setdefault(key, bone_shape)
             bone_shape.user_remap(first)

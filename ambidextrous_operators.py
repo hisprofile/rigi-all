@@ -87,6 +87,7 @@ class rigiall_ot_makearms(Operator):
             if hasattr(chain[0], 'rigify_parameters'):
                 chain[0].rigify_type = 'limbs.arm'
                 param = chain[0].rigify_parameters
+                param.segments = 1
                 param.ik_local_location = False
                 self.report({'INFO'}, 'Arm generated!')
                 fk_col = param.fk_coll_refs.add()
@@ -210,6 +211,7 @@ class rigiall_ot_makelegs(rigiall_ot_genericText):
             if hasattr(chain[0], 'rigify_parameters'):
                 chain[0].rigify_type = 'limbs.leg'
                 param = chain[0].rigify_parameters
+                param.segments = 1
                 param.rotation_axis = self.rotation_axis
                 fk_col = param.fk_coll_refs.add()
                 tweak_col = param.tweak_coll_refs.add()

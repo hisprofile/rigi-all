@@ -3,7 +3,7 @@ schema_version = "1.0.0"
 # Example of manifest file for a Blender extension
 # Change the values according to your extension
 id = "rigi_all"
-version = "1.5.1"
+version = "1.5.2"
 name = "Rigi-All"
 tagline = "Speeds up the Rigify process"
 maintainer = "hisanimations <hisprofile029@gmail.com>"
