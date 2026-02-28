@@ -3,7 +3,7 @@ from bpy.types import Operator
 from bpy.props import EnumProperty, StringProperty
 from bpy.utils import register_classes_factory
 from .operators import mode, mark, rigiall_ot_genericText
-from .main import get_bone_chains, connect_chains, iter_two
+from .main import get_bone_chains, connect_chains, iter_two, null
 
 valids = ()
 right = 'RIGHT'
@@ -42,7 +42,7 @@ class rigiall_ot_makearms(Operator):
     def execute(self, context):
         obj = context.object
         props = context.window_manager.rigiall_props
-        col = context.object.data.collections
+        col = context.object.data.collections_all
         
         left_col = col.get('Arm.L (IK)')
         right_col = col.get('Arm.R (IK)')
@@ -131,10 +131,15 @@ class rigiall_ot_makelegs(rigiall_ot_genericText):
         return len(context.selected_pose_bones) > 1
     
     def execute(self, context):
-        from mathutils import Vector
-        obj = context.object
+        from mathutils import Vector, Matrix
+        from collections import defaultdict
+        import numpy as np
+        Z = Vector((0, 0, 1))
+        threshold = 0.8
+
+        obj: bpy.types.Object = context.object
         props = context.window_manager.rigiall_props
-        col = context.object.data.collections
+        col = context.object.data.collections_all
         bone_chains = get_bone_chains(context)
 
         for chain in bone_chains:
@@ -143,6 +148,42 @@ class rigiall_ot_makelegs(rigiall_ot_genericText):
             except AssertionError:
                 self.report({'ERROR'}, f'Chain stemming from {chain[0].name} to needs four bones!')
                 return {'CANCELLED'}
+        
+        all_verts = np.zeros((0, 4), dtype=np.float32)
+        vertex_groups = defaultdict(lambda: np.zeros(0, dtype=np.float32))
+
+        for child in obj.children_recursive:
+            if not isinstance(child.data, bpy.types.Mesh): continue
+            if not any([(mod.type == 'ARMATURE') and (getattr(mod, 'object', None) == obj) for mod in getattr(child, 'modifiers', [])]):
+                continue
+            current_groups = list()
+            for chain in bone_chains:
+                foot_vg = getattr(child.vertex_groups.get(chain[2].name), 'index', -1)
+                toe_vg = getattr(child.vertex_groups.get(chain[3].name), 'index', -1)
+                foot_vg_array = np.array([next(filter(lambda a: a.group == foot_vg, v.groups), null).weight for v in child.data.vertices], dtype=np.float32)
+                toe_vg_array = np.array([next(filter(lambda a: a.group == toe_vg, v.groups), null).weight for v in child.data.vertices], dtype=np.float32)
+                current_groups.extend([(chain[2].name, foot_vg_array), (chain[3].name, toe_vg_array)])
+
+            if not any([array.max() > 0 for name, array in current_groups]):
+                continue
+        
+            for name, array in current_groups:
+                vertex_groups[name] = np.append(vertex_groups[name], array)
+
+            verts = np.zeros(len(child.data.vertices)*3, dtype=np.float32)
+            child.data.vertices.foreach_get('co', verts)
+            verts = verts.reshape((-1, 3))
+            verts = np.hstack((
+                verts,
+                np.ones((verts.shape[0], 1))
+            ))
+
+            transform = np.array(obj.matrix_world.inverted() @ child.matrix_world)
+            verts = (transform @ verts.T).T
+
+            all_verts = np.append(all_verts, verts)
+
+        all_verts = all_verts.reshape((-1, 4))
 
         left_col = col.get('Leg.L (IK)')
         right_col = col.get('Leg.R (IK)')
@@ -166,38 +207,76 @@ class rigiall_ot_makelegs(rigiall_ot_genericText):
             if side is right:
                 right_col.assign(bone)
 
+        mode(mode='EDIT')
+        edits: bpy.types.ArmatureEditBones = obj.data.edit_bones
+
         for chain in bone_chains:
             side = determine_side(props, chain[0])
+
             bone_list = tuple((bone.name for bone in chain))
-            mode(mode='EDIT')
 
-            edits = obj.data.edit_bones
-            for prior, next in iter_two(bone_list):
-                edits[prior].tail = edits[next].head
-                edits[next].use_connect = True
+            for prior, later in iter_two(bone_list):
+                edits[prior].tail = edits[later].head
+                edits[later].use_connect = True
 
-            X = 0
-            Y = 0
-            if props.symmetry_mode == 'X_NEGATIVE':
-                X = -1
-            elif props.symmetry_mode == 'X_POSITIVE':
-                X = 1
-            if props.symmetry_mode == 'Y_NEGATIVE':
-                Y = -1
-            elif props.symmetry_mode == 'Y_POSITIVE':
-                Y = 1
-            X *= 1 if side is right else -1
-            Y *= 1 if side is right else -1
-
-            offset = Vector((X, Y, 0))
-            
-            foot = edits[bone_list[-2]]
-            foot_length = (foot.head - foot.tail).length
-            heel: bpy.types.EditBone = edits.new('heel.R' if side is right else 'heel.L')
+            foot = edits[bone_list[2]]
+            heel = edits.new('heel.R' if side is right else 'heel.L')
             heel_name = heel.name
             heel.parent = foot
-            heel.head = foot.head - offset*(foot_length*.5)
-            heel.tail = foot.head + offset*(foot_length*.5)
+
+            foot_dir: Vector = (foot.tail - foot.head).xy.normalized().to_3d()
+            foot_x = foot_dir.cross(Z)
+            foot_y = Z.cross(foot_x)
+            rotation = Matrix([
+                foot_x,
+                foot_y,
+                Z
+            ]).transposed().to_4x4()
+            transform = Matrix.Translation(foot.matrix.to_translation()) @ rotation
+
+            if all_verts.size > 0:
+                foot_name, toe_name = chain[2].name, chain[3].name
+
+                transform_inverted = np.array(transform.inverted())
+
+                joined_mask = (vertex_groups[foot_name] + vertex_groups[toe_name])
+                valid_mask = (joined_mask > threshold)
+                joined_mask = joined_mask[valid_mask].reshape((-1, 1))
+                toe_mask = vertex_groups[toe_name][valid_mask]
+                valid_points = all_verts[valid_mask]
+                transformed_points = (transform_inverted @ valid_points.T).T
+
+                final_points = transformed_points*joined_mask + valid_points * (1-joined_mask)
+                final_points = final_points[:, :3]
+                final_points_toe_Z_max = final_points[toe_mask > threshold][:, 2].max()
+
+                x_min = final_points[:, 0].min()
+                x_max = final_points[:, 0].max()
+                y_min = final_points[final_points[:, 2] <= final_points_toe_Z_max][:, 1].min()
+                bone_min = (transform @ Vector((x_min if side is right else x_max, y_min, 0))).xy.to_3d()
+                bone_max = (transform @ Vector((x_max if side is right else x_min, y_min, 0))).xy.to_3d()
+                
+                heel.head = bone_min
+                heel.tail = bone_max
+            else:
+                foot_length = (foot.head - foot.tail).length
+                X = 0
+                Y = 0
+                if props.symmetry_mode == 'X_NEGATIVE':
+                    X = -1
+                elif props.symmetry_mode == 'X_POSITIVE':
+                    X = 1
+                if props.symmetry_mode == 'Y_NEGATIVE':
+                    Y = -1
+                elif props.symmetry_mode == 'Y_POSITIVE':
+                    Y = 1
+                X *= 1 if side is right else -1
+                Y *= 1 if side is right else -1
+
+                offset = Vector((X, Y, 0))
+                
+                heel.head = (rotation @ offset*(foot_length*.5) + foot.head).xy.to_3d()
+                heel.tail = (rotation @ -offset*(foot_length*.5) + foot.head).xy.to_3d()
             
             for col in heel.collections:
                 col.unassign(heel)
@@ -259,7 +338,7 @@ class rigiall_ot_makefingers(rigiall_ot_genericText):
     def execute(self, context):
         obj = context.object
         props = context.window_manager.rigiall_props
-        bone_col = context.object.data.collections
+        bone_col = context.object.data.collections_all
 
         bone_chains = get_bone_chains(context)
         all_bones = [bone for chain in bone_chains for bone in chain]
@@ -348,7 +427,7 @@ class rigiall_ot_makeshoulders(Operator):
         for chain in bone_chains:
             bone = chain[0]
             if hasattr(bone, 'rigify_parameters'):
-                obj.data.collections['Torso'].assign(bone.bone)
+                obj.data.collections_all['Torso'].assign(bone.bone)
                 bone.rigify_type = 'basic.super_copy'
                 param = bone.rigify_parameters
                 param.make_control = True

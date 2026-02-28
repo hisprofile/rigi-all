@@ -1,7 +1,7 @@
 import bpy
 from bpy.types import Operator, Panel
 from bpy.props import StringProperty
-from math import degrees
+from math import degrees, pi
 
 class rigiall_OT_change_category(Operator):
     bl_idname = 'rigiall.change_category'
@@ -37,6 +37,7 @@ class RIGIALL_PT_panel(Panel):
     def draw(self, context):
         props = context.window_manager.rigiall_props
         layout = self.layout
+        blend_data = context.blend_data
         #layout.panel('BONE_PT_rigify_buttons', default_closed=False)
         #bpy.types.BONE_PT_rigify_buttons.draw(self, context)
         #if getattr(context.object, 'type', None) != 'ARMATURE':
@@ -49,13 +50,14 @@ class RIGIALL_PT_panel(Panel):
         if props.view == 'RIGGING':
             if getattr(context.object, 'mode', 'OBJECT') == 'OBJECT':
                 row = layout.row()
-                row.label(text='Merge Armature')
+                row.label(text='Preserve Bones')
                 op = row.operator('rigiall.textbox', icon='QUESTION', text="What's this?")
-                op.text = '''This tool overlays the original rig onto the meta-rig, preserving the original rig's bone orientations without compromising on a Rigify Rig.'''
-                op.icons = 'QUESTION'
-                op.size = '56'
+                op.text = '''This tool preserves the original rig over the soon-to-be meta-rig, preserving the original rig's bone orientations without compromising on a Rigify Rig.
+This should be done absolutely first!'''
+                op.icons = 'QUESTION,ERROR'
+                op.size = '56,56'
                 op.width=330
-
+                '''
                 box = layout.box()
 
                 box.prop(props, 'parasite', text='Original Rig')
@@ -65,6 +67,8 @@ class RIGIALL_PT_panel(Panel):
                     row.alert = True
                     row.label(text='Target is not a meta-rig!')
                 box.operator('rigiall.merge')
+                '''
+                layout.row().box().operator('rigiall.preserve_bones')
 
             if getattr(context.object, 'type', None) != 'ARMATURE':
                 layout.row().label(text='Select an armature!')
@@ -227,11 +231,20 @@ class RIGIALL_PT_panel(Panel):
             r = row.row()
             r.alignment = 'RIGHT'
             r.operator('rigiall.extras_manual', text='Only Selected')
-            op = box_misc.row().operator('rigiall.adjustroll', text='Roll by 90°')
-            op.roll = 90
+            for roll, sign in [(pi/2, '+'), (-pi/2, '-')]:
+                col = box_misc.column()
+                row = col.row()
+                row.label(text=f'Roll by {int(degrees(roll))}°')
+                row = col.row(align=True)
+                for axis in ['X', 'Y', 'Z']:
+                    op = row.operator('rigiall.adjustroll', text=sign+axis)
+                    op.roll = roll
+                    op.axis = axis
+            #op = box_misc.row().operator('rigiall.adjustroll', text='Roll by 90°')
+            #op.roll = pi/2
 
-            op = box_misc.row().operator('rigiall.adjustroll', text='Roll by -90°')
-            op.roll = -90
+            #op = box_misc.row().operator('rigiall.adjustroll', text='Roll by -90°')
+            #op.roll = -pi/2
             
             box_misc.row().operator('rigiall.noroll')
             row = box_misc.row()
@@ -251,7 +264,15 @@ class RIGIALL_PT_panel(Panel):
             layout.label(text='Bone Shapes')
             box = layout.box()
             box.row().operator('rigiall.deduplicate_boneshapes')
-            
+        elif props.view == 'MISCELLANEOUS':
+            col = layout.column()
+            col.label(text='Make Bones Renderable')
+            box = col.box()
+            box.row().operator('rigiall.make_bones_renderable')
+            if (ng := blend_data.node_groups.get('Rigi-All Wire to Curve')):
+                box.row().prop(ng.nodes['CURVE_THICKNESS'].inputs[1], 'default_value', text='Wire Thickness * 0.01')
+            else:
+                box.row().prop(context.window_manager.rigiall_props, 'wire_thickness', text='Wire Thickness * 0.01')
 
 classes = [
     RIGIALL_PT_panel,

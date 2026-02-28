@@ -83,7 +83,7 @@ class rigiall_ot_makeArm(Operator):
     def execute(self, context):
         obj = context.object
         props = context.window_manager.rigiall_props
-        col = context.object.data.collections
+        col = context.object.data.collections_all
         bones = context.selected_pose_bones
 
         try:
@@ -170,7 +170,7 @@ class rigiall_ot_makeLeg(rigiall_ot_genericText):
     def execute(self, context):
         obj = context.object
         props = context.window_manager.rigiall_props
-        col = context.object.data.collections
+        col = context.object.data.collections_all
         bones = context.selected_pose_bones
 
         try:
@@ -257,7 +257,7 @@ class rigiall_ot_makeSpine(rigiall_ot_genericText):
     
     def execute(self, context):
         obj = context.object
-        bone_col = context.object.data.collections
+        bone_col = context.object.data.collections_all
         bones = context.selected_pose_bones
 
         for bone in bones:
@@ -302,7 +302,7 @@ class rigiall_ot_makeNeck(Operator):
     def execute(self, context):    
         obj = context.object
         props = context.window_manager.rigiall_props
-        bone_col = context.object.data.collections
+        bone_col = context.object.data.collections_all
         bones = context.selected_pose_bones
         for bone in bones:
             mark(bone)
@@ -359,7 +359,7 @@ class rigiall_ot_makeFingers(rigiall_ot_genericText):
     def execute(self, context):
         obj = context.object
         props = context.window_manager.rigiall_props
-        bone_col = context.object.data.collections
+        bone_col = context.object.data.collections_all
         bones = context.selected_pose_bones
 
         for bone in bones:
@@ -408,15 +408,26 @@ class rigiall_ot_90roll(Operator):
     bl_description = 'Adjust roll by 90° or -90°'
     bl_options = {'UNDO'}
     
-    roll: FloatProperty(default=0)
+    roll: FloatProperty(default=0.0)
+    axis: EnumProperty(
+        items=(
+            ('X', 'X', 'X'),
+            ('Y', 'Y', 'Y'),
+            ('Z', 'Z', 'Z'),
+        ),
+        name='Axis',
+        description='Which axis to roll on'
+    )
     
     def execute(self, context):
-        import math
+        from mathutils import Matrix
         bones = [i.name for i in context.selected_pose_bones]
         mode(mode='EDIT')
         edits = context.object.data.edit_bones
         for bone in bones:
-            edits[bone].roll += math.radians(self.roll)
+            bone = edits[bone]
+            bone.matrix = bone.matrix @ Matrix.Rotation(self.roll, 4, self.axis)
+            #edits[bone].roll += math.radians(self.roll)
         mode(mode='POSE')
         return {'FINISHED'}
         
@@ -460,7 +471,7 @@ class rigiall_ot_makeShoulder(Operator):
                 bone.name = bone.name.replace(props.symmetry_right_keyword, '_') + '.R'
         for col in bone.bone.collections:
             col.unassign(bone.bone)
-        obj.data.collections['Torso'].assign(bone.bone)
+        obj.data.collections_all['Torso'].assign(bone.bone)
         mark(bone)
         if hasattr(bone, 'rigify_parameters'):
             bone.rigify_type = 'basic.super_copy'
@@ -513,7 +524,7 @@ class rigiall_ot_makeExtras(Operator):
         layout.prop(self, 'widgets')
     
     def execute(self, context):
-        bone_col = context.object.data.collections['Extras']
+        bone_col = context.object.data.collections_all['Extras']
         error = False
         for bone in context.object.pose.bones:
             if getattr(bone, 'rigi_all_mark', False):
@@ -572,7 +583,7 @@ class rigiall_ot_extras_manual(Operator):
     
     def execute(self, context):
         error = False
-        bone_col = context.object.data.collections['Extras']
+        bone_col = context.object.data.collections_all['Extras']
         for bone in context.selected_pose_bones:
             mark(bone)
             for col in bone.bone.collections:
@@ -715,7 +726,7 @@ class rigiall_ot_remove_def_prefix(rigiall_ot_genericText):
         return getattr(context.object, 'type', None) == 'ARMATURE'
     
     def execute(self, context):
-        if context.object.data.collections.get('overlaying'):
+        if context.object.data.collections_all.get('overlaying'):
             self.report({'ERROR'}, "This is not necessary! You already have the original bone names from the merged armature!")
             return {'CANCELLED'}
         
@@ -723,8 +734,8 @@ class rigiall_ot_remove_def_prefix(rigiall_ot_genericText):
         data_copy = context.object.data.copy()
         obj_copy.data = data_copy
 
-        bones: set[bpy.types.Bone] = set(getattr(data_copy.collections.get('DEF', None), 'bones',data_copy.bones))
-        bones.update(set(getattr(data_copy.collections.get('Extras'), 'bones', bones)))
+        bones: set[bpy.types.Bone] = set(getattr(data_copy.collections_all.get('DEF', None), 'bones', data_copy.bones))
+        bones.update(set(getattr(data_copy.collections_all.get('Extras'), 'bones', bones)))
         for bone in bones:
             if not bone.name.startswith('DEF-'): continue
             before = bone.path_from_id()
@@ -840,6 +851,53 @@ class rigiall_ot_fix_symmetry_name(Operator):
 # from the original rig are all kept so we can attach the many cosmetics with no problem, and with nothing more
 # than copy location and rotation constraints.
 
+class RIGIALL_OT_preserve_bones(Operator):
+    bl_idname = 'rigiall.preserve_bones'
+    bl_label = 'Preserve Original Bones'
+    bl_description = 'Keep the original bones under the meta-rig, in case they are needed by other armatures. This should be done first!'
+
+    bl_options = {'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return (getattr(context.object, 'type', '') == 'ARMATURE') and (context.object.data.collections_all.get('overlaying') == None)
+
+    def execute(self, context):
+        obj = context.object
+        if obj.data.collections_all.get('overlaying'):
+            self.report({'ERROR'}, 'Armature bones have already been preserved!')
+        #obj_copy = obj.copy()
+        obj_data_name = obj.data.name
+        obj_data_copy: bpy.types.Armature = obj.data.copy()
+        obj.data.name = '!'
+        obj_data_copy.name = obj_data_name
+        #obj.data = obj_data_copy
+
+        for bone in obj_data_copy.bones:
+            bone.name = '!' + bone.name
+
+        obj.data = obj_data_copy
+
+        mode(mode='EDIT')
+
+        ebones = obj.data.edit_bones
+        new_bones = list()
+        for bone in list(obj.data.edit_bones):
+            copy = ebones.new(bone.name[1:])
+            new_bones.append(copy.name)
+            copy.head = bone.head
+            copy.tail = bone.tail
+            copy.roll = bone.roll
+            copy.parent = bone
+
+        mode(mode='OBJECT')
+
+        overlaying = obj_data_copy.collections.new('overlaying')
+        [overlaying.assign(obj_data_copy.bones[bone]) for bone in new_bones]
+
+        self.report({'INFO'}, 'Original bones have been preserved! Please proceed with limb generation.')
+        return {'FINISHED'}
+
 # Another use case is to make re-targeting animations easier!
 class rigiall_ot_merge(Operator):
     bl_idname = 'rigiall.merge'
@@ -917,6 +975,116 @@ class rigiall_ot_merge(Operator):
         if error:
             self.report({'WARNING'}, 'Rigify is not enabled, merge operation could not be completed!')
 
+        props.parasite = None
+        props.host = None
+
+        return {'FINISHED'}
+    
+class RIGIALL_OT_make_bones_renderable(Operator):
+    bl_idname = 'rigiall.make_bones_renderable'
+    bl_label = 'Make Bones Renderable'
+    bl_description = 'Make mesh copies of custom bone shapes, which are converted to tubes through geometry nodes, allowing them to be rendered'
+    bl_options = {'UNDO'}
+
+    exclude_hidden_bones: BoolProperty(name='Exclude Hidden Bones', description='If enabled, hidden bones will not be realized', default=True)
+
+    @classmethod
+    def poll(cls, context):
+        return getattr(context.object, 'type', '') == 'ARMATURE'
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        from mathutils import Matrix, Vector
+        from .main import initialize_wire_to_curve
+
+        blend_data = context.blend_data
+
+        node_group = initialize_wire_to_curve(context)
+
+        obj = context.object
+        themes = context.preferences.themes['Default']
+        bone_color_sets = themes.bone_color_sets
+
+        bone_themes = {'THEME' + f'{n+1:02d}': set for n, set in enumerate(bone_color_sets)}
+
+        if not (collection := obj.get('real_bone_shapes', None)):
+            collection = blend_data.collections.new(f'{obj.name} Render Bones')
+            obj['real_bone_shapes'] = collection
+            obj.users_collection[0].children.link(collection)
+        else:
+            [blend_data.objects.remove(obj) for obj in collection.objects]
+
+        if self.exclude_hidden_bones:
+            bones = set()
+            [bones.update(set(bone_col.bones)) for bone_col in context.object.data.collections if bone_col.is_visible]
+            [bones.discard(pbone.bone) for pbone in context.object.pose.bones if pbone.bone.hide]
+        else:
+            bones = set(context.object.data.bones)
+
+        for bone in bones:
+            pbone = obj.pose.bones[bone.name]
+            if not pbone.custom_shape: continue
+            new_obj = blend_data.objects.new(bone.name, pbone.custom_shape.data)
+            
+            if bone.color.palette == 'DEFAULT':
+                color = themes.view_3d.wire
+            elif bone.color.palette == 'CUSTOM':
+                color = bone.color.custom.normal
+            else:
+                color = bone_themes[bone.color.palette].normal
+                
+            new_obj.color = Vector(color).to_4d()
+            collection.objects.link(new_obj)
+            custom_shape_translation = Matrix.Translation(pbone.custom_shape_translation)
+            custom_shape_rotation = pbone.custom_shape_rotation_euler.to_matrix().to_4x4()
+            scale = pbone.custom_shape_scale_xyz
+            custom_shape_scale = Matrix([
+                [scale[0], 0, 0, 0],
+                [0, scale[1], 0, 0],
+                [0, 0, scale[2], 0],
+                [0, 0, 0, 1]
+            ])
+            custom_shape_matrix = custom_shape_translation @ custom_shape_rotation @ custom_shape_scale
+            matrix = (pbone.custom_shape_transform or pbone).matrix
+            matrix = obj.matrix_world @ matrix @ custom_shape_matrix @ Matrix.Scale(pbone.bone.length, 4)
+            new_obj.parent = obj
+            new_obj.parent_bone = (pbone.custom_shape_transform or pbone).name
+            new_obj.parent_type = 'BONE'
+            new_obj.matrix_world = matrix
+
+            mod: bpy.types.NodesModifier = new_obj.modifiers.new('Wire to Curve', 'NODES')
+            mod.node_group = node_group
+            
+            if bone.collections:
+                view_curve = new_obj.driver_add('hide_viewport')
+                view_driver = view_curve.driver
+                
+                render_curve = new_obj.driver_add('hide_render')
+                render_driver = render_curve.driver
+                
+                expr = f'not ({" or ".join(["V" + str(n) for n in range(len(bone.collections))])})'
+                
+                for n, bone_col in enumerate(bone.collections):
+                    var = view_driver.variables.new()
+                    var.name = f'V{n}'
+                    t = var.targets[0]
+                    t.id_type = 'ARMATURE'
+                    t.id = obj.data
+                    path = bone_col.path_resolve('is_visible', False).path_from_id()
+                    t.data_path = path
+                    view_driver.expression = expr
+                    
+                    var = render_driver.variables.new()
+                    var.name = f'V{n}'
+                    t = var.targets[0]
+                    t.id_type = 'ARMATURE'
+                    t.id = obj.data
+                    path = bone_col.path_resolve('is_visible', False).path_from_id()
+                    t.data_path = path
+                    render_driver.expression = expr
+        
         return {'FINISHED'}
         
 classes = [rigiall_ot_makeArm,
@@ -936,6 +1104,8 @@ classes = [rigiall_ot_makeArm,
     rigiall_ot_genericText,
     rigiall_ot_deduplicate_boneshapes,
     rigiall_ot_fix_symmetry_name,
+    RIGIALL_OT_preserve_bones,
+    RIGIALL_OT_make_bones_renderable
     ]
 
 r, ur = bpy.utils.register_classes_factory(classes)

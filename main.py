@@ -1,7 +1,7 @@
 import bpy
 from bpy.types import PropertyGroup, AddonPreferences
 from bpy.utils import register_classes_factory
-from bpy.props import (BoolProperty, StringProperty, PointerProperty, EnumProperty)
+from bpy.props import (BoolProperty, StringProperty, PointerProperty, EnumProperty, FloatProperty)
 from .panel import RIGIALL_PT_panel
 
 symmetries = [
@@ -14,7 +14,7 @@ symmetries = [
 symmetry_swap = {a: b for a, b in symmetries for a, b in [(a, b), (b, a)]}
 symmetries_unraveled = [side for pair in symmetries for side in pair]
     
-def get_bone_chains(context: bpy.types.Context, get_symmetry: bool = True):
+def get_bone_chains(context: bpy.types.Context, get_symmetry: bool = True) -> list[list[bpy.types.PoseBone]]:
     props = context.window_manager.rigiall_props
     all_chains = []
     current_chain = []
@@ -92,6 +92,24 @@ def initialize_finalize_script(context: bpy.types.Context):
             finalize_script.write(file.read())
     return finalize_script
 
+def initialize_wire_to_curve(context: bpy.types.Context):
+    import os
+    root = os.path.dirname(__file__)
+    blend_data = context.blend_data
+    if (ng := blend_data.node_groups.get('Rigi-All Wire to Curve')):
+        return ng
+    
+    with bpy.data.libraries.load(os.path.join(root, 'assets', 'wire_to_curve.blend')) as (src, dst):
+        dst.node_groups = ['Rigi-All Wire to Curve']
+
+    ng: bpy.types.GeometryNodeTree = dst.node_groups[0]
+    ng.nodes['CURVE_THICKNESS'].inputs[1].default_value = context.window_manager.rigiall_props.wire_thickness
+
+    return dst.node_groups[0]
+
+class null:
+    weight = 0.0
+
 class rigiall_prefs(AddonPreferences):
     bl_idname = __package__
 
@@ -135,12 +153,15 @@ class rigiall_group(PropertyGroup):
     view: EnumProperty(
         items=(
             ('RIGGING', 'Rigging', 'View the rigging tools'),
-            ('CLEAN_UP', 'Clean up', 'View the clean up tools')
+            ('CLEAN_UP', 'Clean up', 'View the clean up tools'),
+            ('MISCELLANEOUS', 'Misc.', 'View miscellaneous tools')
         ),
         name='View',
         description='Set the view mode for Rigi-All',
         default='RIGGING'
     )
+
+    wire_thickness: FloatProperty(name='Wire Thickness', default=0.05)
     
 classes = [
     rigiall_prefs,
