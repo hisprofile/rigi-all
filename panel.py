@@ -38,6 +38,8 @@ class RIGIALL_PT_panel(Panel):
         props = context.window_manager.rigiall_props
         layout = self.layout
         blend_data = context.blend_data
+        data_groups = blend_data.node_groups
+        data_materials = blend_data.materials
         #layout.panel('BONE_PT_rigify_buttons', default_closed=False)
         #bpy.types.BONE_PT_rigify_buttons.draw(self, context)
         #if getattr(context.object, 'type', None) != 'ARMATURE':
@@ -269,10 +271,24 @@ This should be done absolutely first!'''
             col.label(text='Make Bones Renderable')
             box = col.box()
             box.row().operator('rigiall.make_bones_renderable')
-            if (ng := blend_data.node_groups.get('Rigi-All Wire to Curve')):
+            if (ng := data_groups.get('Rigi-All Wire to Curve')):
                 box.row().prop(ng.nodes['CURVE_THICKNESS'].inputs[1], 'default_value', text='Wire Thickness * 0.01')
+                box.row().prop(data_groups['.rigiall_bone_params'].nodes[0].inputs[0], 'default_value', text='Wire Transparency')
+                main = box.row()
+                r = main.row()
+                r.alignment = 'LEFT'
+                r.label(text='Transparency Method:')
+                r = main.row()
+                r.alignment = 'EXPAND'
+                r.prop(data_materials['Rigi-All Bone Colorer'], 'surface_render_method', text='')
+                r = box.row()
+                r.alignment = 'CENTER'
+                r.prop(data_materials['Rigi-All Bone Colorer'], 'use_transparent_shadow')
             else:
-                box.row().prop(context.window_manager.rigiall_props, 'wire_thickness', text='Wire Thickness * 0.01')
+                r = box.row()
+                r.active = False
+                r.label(text='Properties will be exposed when used.')
+                #box.row().prop(context.window_manager.rigiall_props, 'wire_thickness', text='Wire Thickness * 0.01')
 
 classes = [
     RIGIALL_PT_panel,

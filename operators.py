@@ -980,6 +980,15 @@ class rigiall_ot_merge(Operator):
 
         return {'FINISHED'}
     
+class node_input_mapper:
+    def __init__(self, modifier: bpy.types.NodesModifier):
+        self.inp_map = {item.name: item.identifier for item in modifier.node_group.interface.items_tree if getattr(item, 'in_out', '') == 'INPUT'}
+        self.mod = modifier
+    def __getitem__(self, key):
+        return self.mod[self.inp_map[key]]
+    def __setitem__(self, key, value):
+        self.mod[self.inp_map[key]] = value
+
 class RIGIALL_OT_make_bones_renderable(Operator):
     bl_idname = 'rigiall.make_bones_renderable'
     bl_label = 'Make Bones Renderable'
@@ -1014,7 +1023,10 @@ class RIGIALL_OT_make_bones_renderable(Operator):
             obj['real_bone_shapes'] = collection
             obj.users_collection[0].children.link(collection)
         else:
-            [blend_data.objects.remove(obj) for obj in collection.objects]
+            mesh_datas = set([obj.data for obj in collection.objects])
+            objs = set(collection.objects)
+            blend_data.batch_remove(objs)
+            blend_data.batch_remove(mesh_datas)
 
         if self.exclude_hidden_bones:
             bones = set()
@@ -1023,19 +1035,26 @@ class RIGIALL_OT_make_bones_renderable(Operator):
         else:
             bones = set(context.object.data.bones)
 
+        bone_map_data = dict()
+
         for bone in bones:
             pbone = obj.pose.bones[bone.name]
             if not pbone.custom_shape: continue
-            new_obj = blend_data.objects.new(bone.name, pbone.custom_shape.data)
+            if not (mesh_data := bone_map_data.get(pbone.custom_shape.data)):
+                bone_map_data[pbone.custom_shape.data] = mesh_data = pbone.custom_shape.data.copy()
+                mesh_data.materials.append(blend_data.materials['Rigi-All Bone Colorer'])
+            new_obj = blend_data.objects.new(bone.name, mesh_data)
+
             
             if bone.color.palette == 'DEFAULT':
-                color = themes.view_3d.wire
+                normal, select, active = themes.view_3d.wire, themes.view_3d.bone_pose, themes.view_3d.bone_pose_active
             elif bone.color.palette == 'CUSTOM':
-                color = bone.color.custom.normal
+                palette = bone.color.custom
+                normal, select, active = palette.normal, palette.select, palette.active
             else:
-                color = bone_themes[bone.color.palette].normal
+                palette = bone_themes[bone.color.palette]
+                normal, select, active = palette.normal, palette.select, palette.active
                 
-            new_obj.color = Vector(color).to_4d()
             collection.objects.link(new_obj)
             custom_shape_translation = Matrix.Translation(pbone.custom_shape_translation)
             custom_shape_rotation = pbone.custom_shape_rotation_euler.to_matrix().to_4x4()
@@ -1056,6 +1075,13 @@ class RIGIALL_OT_make_bones_renderable(Operator):
 
             mod: bpy.types.NodesModifier = new_obj.modifiers.new('Wire to Curve', 'NODES')
             mod.node_group = node_group
+
+            mod = node_input_mapper(mod)
+
+            normal = Vector(normal).to_4d()
+            select = Vector(select).to_4d()
+            active = Vector(active).to_4d()
+            mod['Normal'], mod['Select'], mod['Active'] = normal, select, active
             
             if bone.collections:
                 view_curve = new_obj.driver_add('hide_viewport')
