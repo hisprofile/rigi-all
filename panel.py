@@ -50,28 +50,7 @@ class RIGIALL_PT_panel(Panel):
         layout.separator()
 
         if props.view == 'RIGGING':
-            if getattr(context.object, 'mode', 'OBJECT') == 'OBJECT':
-                row = layout.row()
-                row.label(text='Preserve Bones')
-                op = row.operator('rigiall.textbox', icon='QUESTION', text="What's this?")
-                op.text = '''This tool preserves the original rig over the soon-to-be meta-rig, preserving the original rig's bone orientations without compromising on a Rigify Rig.
-This should be done absolutely first!'''
-                op.icons = 'QUESTION,ERROR'
-                op.size = '56,56'
-                op.width=330
-                '''
-                box = layout.box()
-
-                box.prop(props, 'parasite', text='Original Rig')
-                box.prop(props, 'host', text='Target Rig')
-                if props.host and not bool(getattr(props.host, 'data', {}).get('RIGI-ALL_INITIALIZED')):
-                    row = box.row()
-                    row.alert = True
-                    row.label(text='Target is not a meta-rig!')
-                box.operator('rigiall.merge')
-                '''
-                layout.row().box().operator('rigiall.preserve_bones')
-
+            
             if getattr(context.object, 'type', None) != 'ARMATURE':
                 layout.row().label(text='Select an armature!')
                 return None
@@ -112,7 +91,7 @@ This should be done absolutely first!'''
                 #row.alignment = 'EXPAND'
                 r.prop(props, 'symmetry_mode', text='')
             row = layout.row()
-            row.prop(props, 'fix_symmetry')
+            row.prop(props, 'fix_symmetry', toggle=True)
             op = row.operator('rigiall.textbox', text='', icon='QUESTION')
             op.text = 'This helps to format bone names to make them compatible for symmetry posing. For example, a pair of bones named "upper_r_arm" and "upper_l_arm" will not support symmetry. However, if you set the left and right symmetry keywords to "_l_" and "_r_" respectively, they will be formatted to "upper_arm.R" "upper_arm.L"'
             op.size = '56'
@@ -225,7 +204,6 @@ This should be done absolutely first!'''
                 op = box_torso.row().operator('rigiall.makeshoulder', text='Make Right Shoulder')
                 op.isLeft = False
 
-            box_arms.row().prop(context.window_manager.rigiall_props, 'ik_fingers')
             row = box_misc.row(align=True)
             row.alignment = 'EXPAND'
             r = row.row()

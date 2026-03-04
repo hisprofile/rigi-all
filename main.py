@@ -34,19 +34,10 @@ def get_bone_chains(context: bpy.types.Context, get_symmetry: bool = True) -> li
             return None
 
         for bone in bones:
-            if props.fix_symmetry:
-                if (sym_bone := pose_bones.get(bone.name.replace(props.symmetry_left_keyword, props.symmetry_right_keyword))):
-                    if sym_bone in bones: continue
-                    additional.append(sym_bone)
-                    continue
-                if (sym_bone := pose_bones.get(bone.name.replace(props.symmetry_right_keyword, props.symmetry_left_keyword))):
-                    if sym_bone in bones: continue
-                    additional.append(sym_bone)
-                    continue
-
             if (sym_bone := get_symmetrical_bone(bone.name)):
                 if sym_bone in bones: continue
                 additional.append(sym_bone)
+                
         bones.extend(additional)
 
     prior_bone = bones.pop(0)

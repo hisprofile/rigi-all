@@ -1,6 +1,6 @@
 import bpy
 from bpy.types import Operator
-from bpy.props import EnumProperty, StringProperty
+from bpy.props import EnumProperty, StringProperty, BoolProperty
 from bpy.utils import register_classes_factory
 from .operators import mode, mark, rigiall_ot_genericText
 from .main import get_bone_chains, connect_chains, iter_two, null
@@ -158,8 +158,10 @@ class rigiall_ot_makelegs(rigiall_ot_genericText):
                 continue
             current_groups = list()
             for chain in bone_chains:
-                foot_vg = getattr(child.vertex_groups.get(chain[2].name), 'index', -1)
-                toe_vg = getattr(child.vertex_groups.get(chain[3].name), 'index', -1)
+                foot_name = (chain[2].bone.get('original_bone') or chain[2].name)
+                toe_name = (chain[3].bone.get('original_bone') or chain[3].name)
+                foot_vg = getattr(child.vertex_groups.get(foot_name), 'index', -1)
+                toe_vg = getattr(child.vertex_groups.get(toe_name), 'index', -1)
                 foot_vg_array = np.array([next(filter(lambda a: a.group == foot_vg, v.groups), null).weight for v in child.data.vertices], dtype=np.float32)
                 toe_vg_array = np.array([next(filter(lambda a: a.group == toe_vg, v.groups), null).weight for v in child.data.vertices], dtype=np.float32)
                 current_groups.extend([(chain[2].name, foot_vg_array), (chain[3].name, toe_vg_array)])
@@ -207,10 +209,10 @@ class rigiall_ot_makelegs(rigiall_ot_genericText):
             if side is right:
                 right_col.assign(bone)
 
-        mode(mode='EDIT')
         edits: bpy.types.ArmatureEditBones = obj.data.edit_bones
-
+        
         for chain in bone_chains:
+            mode(mode='EDIT')
             side = determine_side(props, chain[0])
 
             bone_list = tuple((bone.name for bone in chain))
@@ -220,8 +222,15 @@ class rigiall_ot_makelegs(rigiall_ot_genericText):
                 edits[later].use_connect = True
 
             foot = edits[bone_list[2]]
-            heel = edits.new('heel.R' if side is right else 'heel.L')
-            heel_name = heel.name
+            side_suffix = 'R' if side is right else 'L'
+            heel_name = 'heel.' + side_suffix
+            if edits.get(heel_name):
+                tally = 0
+                while edits.get(heel_name):
+                    tally += 1
+                    heel_name = 'heel.' + f'{tally:03d}.' + side_suffix
+
+            heel = edits.new(heel_name)
             heel.parent = foot
 
             foot_dir: Vector = (foot.tail - foot.head).xy.normalized().to_3d()
@@ -260,18 +269,8 @@ class rigiall_ot_makelegs(rigiall_ot_genericText):
                 heel.tail = bone_max
             else:
                 foot_length = (foot.head - foot.tail).length
-                X = 0
+                X = -1 if side is right else 1
                 Y = 0
-                if props.symmetry_mode == 'X_NEGATIVE':
-                    X = -1
-                elif props.symmetry_mode == 'X_POSITIVE':
-                    X = 1
-                if props.symmetry_mode == 'Y_NEGATIVE':
-                    Y = -1
-                elif props.symmetry_mode == 'Y_POSITIVE':
-                    Y = 1
-                X *= 1 if side is right else -1
-                Y *= 1 if side is right else -1
 
                 offset = Vector((X, Y, 0))
                 
@@ -325,6 +324,8 @@ class rigiall_ot_makefingers(rigiall_ot_genericText):
         name="Primary Rotation Axis", default='X'
         )
     
+    ik_fingers: BoolProperty(name='IK Fingers', description='Use IK targets at the end of fingers', default=False)
+    
     @classmethod
     def poll(cls, context):
         if context.object == None: return False
@@ -334,6 +335,9 @@ class rigiall_ot_makefingers(rigiall_ot_genericText):
         row = self.layout.row()
         row.alignment = 'CENTER'
         row.prop(self, 'primary_rotation_axis')
+        row = self.layout.row()
+        row.alignment = 'CENTER'
+        row.prop(self, 'ik_fingers')
 
     def execute(self, context):
         obj = context.object
