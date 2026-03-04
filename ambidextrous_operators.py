@@ -58,14 +58,7 @@ class rigiall_ot_makearms(Operator):
         
         for bone in all_bones:
             mark(bone)
-            side = determine_side(props, bone)
-            if props.fix_symmetry:
-                if (side is left) and (props.symmetry_left_keyword in bone.name):
-                    bone.name = bone.name.replace(props.symmetry_left_keyword, '_') + '.L'
-                    
-                if (side is right) and (props.symmetry_right_keyword in bone.name):
-                    bone.name = bone.name.replace(props.symmetry_right_keyword, '_') + '.R'
-                    
+            
             for col in bone.bone.collections:
                 col.unassign(bone)
 
@@ -193,14 +186,7 @@ class rigiall_ot_makelegs(rigiall_ot_genericText):
 
         for bone in all_bones:
             mark(bone)
-            side = determine_side(props, bone)
-            if props.fix_symmetry:
-                if (side is left) and (props.symmetry_left_keyword in bone.name):
-                    bone.name = bone.name.replace(props.symmetry_left_keyword, '_') + '.L'
-                    
-                if (side is right) and (props.symmetry_right_keyword in bone.name):
-                    bone.name = bone.name.replace(props.symmetry_right_keyword, '_') + '.R'
-                    
+            
             for col in bone.bone.collections:
                 col.unassign(bone)
 
@@ -349,14 +335,7 @@ class rigiall_ot_makefingers(rigiall_ot_genericText):
 
         for bone in all_bones:
             mark(bone)
-            side = determine_side(props, bone)
-            if props.fix_symmetry:
-                if (side is left) and (props.symmetry_left_keyword in bone.name):
-                    bone.name = bone.name.replace(props.symmetry_left_keyword, '_') + '.L'
-                    
-                if (side is right) and (props.symmetry_right_keyword in bone.name):
-                    bone.name = bone.name.replace(props.symmetry_right_keyword, '_') + '.R'
-                    
+            
             for col in bone.bone.collections:
                 col.unassign(bone)
 
@@ -417,14 +396,7 @@ class rigiall_ot_makeshoulders(Operator):
 
         for bone in all_bones:
             mark(bone)
-            side = determine_side(props, bone)
-            if props.fix_symmetry:
-                if (side is left) and (props.symmetry_left_keyword in bone.name):
-                    bone.name = bone.name.replace(props.symmetry_left_keyword, '_') + '.L'
-                    
-                if (side is right) and (props.symmetry_right_keyword in bone.name):
-                    bone.name = bone.name.replace(props.symmetry_right_keyword, '_') + '.R'
-                    
+            
             for col in bone.bone.collections:
                 col.unassign(bone)
         

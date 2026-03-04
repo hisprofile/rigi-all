@@ -100,6 +100,18 @@ def initialize_wire_to_curve(context: bpy.types.Context):
 
 class null:
     weight = 0.0
+    def __getattr__(self, _):
+        return self
+    def __bool__(self):
+        return False
+    def __int__(self):
+        return 0
+    def __eq__(self, _):
+        return False
+    def __repr__(self):
+        return 'None'
+
+null = null()
 
 class rigiall_prefs(AddonPreferences):
     bl_idname = __package__

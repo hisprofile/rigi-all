@@ -230,8 +230,9 @@ class RIGIALL_PT_panel(Panel):
             row = box_misc.row()
             row.operator('rigiall.make_generic_chain')
         elif props.view == 'CLEAN_UP':
-            layout.label(text='Make Mesh Compatible')
-            box = layout.box()
+            col = layout.column()
+            col.label(text='Make Mesh Compatible')
+            box = col.box()
             box.row().operator('rigiall.tweakmesh')
             op = box.row().operator('rigiall.remove_def_prefix')
             op.text = 'This is destructive to the rig, and is recommended if you add the "DEF-" prefix to vertex groups instead.\nContinue anyways?'
@@ -241,9 +242,15 @@ class RIGIALL_PT_panel(Panel):
             #layout.label(text='Finalize Merged Armature')
             #box = layout.box()
             #box.row().operator('rigiall.tweakarmature')
-            layout.label(text='Bone Shapes')
-            box = layout.box()
+            col = layout.column()
+            col.label(text='Bone Shapes')
+            box = col.box()
             box.row().operator('rigiall.deduplicate_boneshapes')
+
+            col = layout.column()
+            col.label(text='Remove Unused Bones, Vertex Groups')
+            box = col.box()
+            box.operator('rigiall.remove_unused_vgroups')
         elif props.view == 'MISCELLANEOUS':
             col = layout.column()
             col.label(text='Make Bones Renderable')

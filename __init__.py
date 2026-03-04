@@ -15,6 +15,8 @@ from . import (
     ambidextrous_operators,
     main,
     operators,
+    operators_cleanup,
+    operators_miscellaneous,
     panel
 )
 
@@ -22,12 +24,16 @@ def register():
     ambidextrous_operators.register()
     main.register()
     operators.register()
+    operators_cleanup.register()
+    operators_miscellaneous.register()
     panel.register()
 
 def unregister():
     ambidextrous_operators.unregister()
     main.unregister()
     operators.unregister()
+    operators_cleanup.unregister()
+    operators_miscellaneous.unregister()
     panel.unregister()
 
 if __name__ == '__main__':
