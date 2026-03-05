@@ -59,7 +59,11 @@ class RIGIALL_PT_panel(Panel):
             elif context.object.get('rig_ui'):
                 pass
             else:
-                layout.row().operator('rigiall.init')
+                op = layout.row().operator('rigiall.init')
+                op.text = '''"Preserve Original Bones" makes it possible for accessories for the rig to attach to a Rigify rig after one has been generated. Leave disabled if the rig in question has no accessories.'''
+                op.size = '56'
+                op.icons = 'GROUP_BONE'
+                op.width = 310
 
             if context.object.get('rig_ui'):
                 layout.row().label(text='This is a Rigify rig!')
@@ -120,7 +124,7 @@ class RIGIALL_PT_panel(Panel):
                     op.icons = 'ERROR'
                     op.width=350
                 
-                col.row().operator('rigiall.fix_symmetry_name')
+                col.row().operator('rigiall.fix_symmetry_name', text='Format Names')
 
 
             bone = context.active_pose_bone
@@ -248,9 +252,17 @@ class RIGIALL_PT_panel(Panel):
             box.row().operator('rigiall.deduplicate_boneshapes')
 
             col = layout.column()
-            col.label(text='Remove Unused Bones, Vertex Groups')
+            row = col.row()
+            row.label(text='Remove Unused Bones, Vertex Groups')
+            op = row.operator('rigiall.textbox', text='', icon='QUESTION')
+            op.text = '''These tools are suited for accessories to another armature.'''
+            op.icons = 'QUESTION'
+            op.size = '56'
+            op.width = 315
             box = col.box()
             box.operator('rigiall.remove_unused_vgroups')
+            box.operator('rigiall.remove_unused_bones')
+            box.operator('rigiall.remove_unused_bones_and_vgroups')
         elif props.view == 'MISCELLANEOUS':
             col = layout.column()
             col.label(text='Make Bones Renderable')

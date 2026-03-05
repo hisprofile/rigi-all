@@ -39,6 +39,8 @@ class RIGIALL_OT_make_bones_renderable(Operator):
         bone_color_sets = themes.bone_color_sets
         bone_themes = {'THEME' + f'{n+1:02d}': set for n, set in enumerate(bone_color_sets)}
 
+        ids_for_deletion = set()
+
         if self.exclude_hidden_bones:
             bones = set()
             [bones.update(set(bone_col.bones)) for bone_col in context.object.data.collections if bone_col.is_visible]
@@ -69,6 +71,7 @@ class RIGIALL_OT_make_bones_renderable(Operator):
 
             remove_bones = existing_bones.difference(set(map(lambda a: a.name, bones)))
             remove_objs: set[bpy.types.Object] = set(map(lambda a: collection[a], remove_bones))
+            [ids_for_deletion.add(obj.data) for obj in remove_objs]
 
             [collection.__delitem__(bone) for bone in remove_bones]
             blend_data.batch_remove(remove_objs)
@@ -79,8 +82,8 @@ class RIGIALL_OT_make_bones_renderable(Operator):
         for bone in set(bones):
             pbone: bpy.types.PoseBone = obj.pose.bones[bone.name]
             if not pbone.custom_shape: continue
+            if not pbone.custom_shape.type in {'MESH', 'CURVE'}: continue
             if not (mesh_data := bone_map_data.get(pbone.custom_shape.data)):
-
                 mesh_data = pbone.custom_shape.data.copy()
                 if  mesh_data.override_library:
                     mesh_data = mesh_data.make_local()
@@ -90,10 +93,12 @@ class RIGIALL_OT_make_bones_renderable(Operator):
 
             if (real_shape := collection.get(bone.name)):
                 if not isinstance(real_shape.data, type(mesh_data)):
+                    ids_for_deletion.add(real_shape.data)
                     bpy.data.objects.remove(real_shape)
                     real_shape = blend_data.objects.new(bone.name, mesh_data)
                     collection.objects.link(real_shape)
                 else:
+                    ids_for_deletion.add(real_shape.data)
                     real_shape.data = mesh_data
             else:
                 real_shape = blend_data.objects.new(bone.name, mesh_data)
@@ -184,6 +189,10 @@ class RIGIALL_OT_make_bones_renderable(Operator):
                     path = bone_col.path_from_id('is_visible')
                     t.data_path = path
         
+        ids_for_deletion.discard(None)
+        ids_for_deletion = set(filter(lambda id: id.users == 0, ids_for_deletion))
+        blend_data.batch_remove(ids_for_deletion)
+
         return {'FINISHED'}
     
 classes = [

@@ -1,7 +1,7 @@
 import bpy
 from bpy.types import Operator
 from bpy.props import EnumProperty, BoolProperty
-from .operators import rigiall_ot_genericText, isolate, mode
+from .operators import generictext, isolate, mode
 from .main import null
 
 class rigiall_ot_tweakmesh(Operator):
@@ -32,7 +32,7 @@ class rigiall_ot_tweakmesh(Operator):
                 group.name = 'DEF-' + group.name
         return {'FINISHED'}
 
-class rigiall_ot_remove_def_prefix(rigiall_ot_genericText):
+class rigiall_ot_remove_def_prefix(generictext):
     bl_idname = 'rigiall.remove_def_prefix'
     bl_label = 'Remove "DEF-" from Bone Names'
     bl_description = 'Change the name of deform bones to be compatible with the mesh. Not recommended'
@@ -164,7 +164,7 @@ def get_used_groups_and_weights(data: bpy.types.Mesh) -> tuple[set[int], keep_hi
         vert.groups.foreach_get('weight', weights)
         vert.groups.foreach_get('group', groups)
         used_groups.update(set(groups))
-        (used_weights.__setitem__(group, weight) for group, weight in zip(groups, weights))
+        [used_weights.__setitem__(group, weight) for group, weight in zip(groups, weights)]
 
     return used_groups, used_weights
 
@@ -241,6 +241,12 @@ class RIGIALL_OT_remove_unused_bones(Operator):
     def poll(cls, context):
         return getattr(context.object, 'type', '') == 'ARMATURE'
     
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+    
+    def draw(self, context):
+        self.layout.prop(self, 'remove_if_zero_weight')
+    
     def execute(self, context):
         for armature in context.selected_objects:
             isolate(context, armature)
@@ -253,7 +259,7 @@ class RIGIALL_OT_remove_unused_bones(Operator):
             # if child has an armature modifier targeting the armature, or parented to the armature using the "ARMATURE" parent type
             children = set(filter(
                 lambda obj: next(filter(lambda modifier: (modifier.type == 'ARMATURE') and modifier.object, obj.modifiers), null).object == armature or
-                ((obj.parent == armature) and (obj.parent_type == 'ARMTURE')),
+                ((obj.parent == armature) and (obj.parent_type == 'ARMATURE')),
                 children
             ))
 
@@ -311,6 +317,12 @@ class RIGIALL_OT_remove_unused_bones_and_vgroups(Operator):
     def poll(cls, context):
         return getattr(context.object, 'type', '') == 'ARMATURE'
     
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+    
+    def draw(self, context):
+        self.layout.prop(self, 'remove_if_zero_weight')
+
     def execute(self, context):
         for armature in context.selected_objects:
             isolate(context, armature)
@@ -323,7 +335,7 @@ class RIGIALL_OT_remove_unused_bones_and_vgroups(Operator):
             # if child has an armature modifier targeting the armature, or parented to the armature using the "ARMATURE" parent type
             children = set(filter(
                 lambda obj: next(filter(lambda modifier: (modifier.type == 'ARMATURE') and modifier.object, obj.modifiers), null).object == armature or
-                ((obj.parent == armature) and (obj.parent_type == 'ARMTURE')),
+                ((obj.parent == armature) and (obj.parent_type == 'ARMATURE')),
                 children
             ))
 
@@ -337,6 +349,10 @@ class RIGIALL_OT_remove_unused_bones_and_vgroups(Operator):
                     used_groups = get_used_groups(child.data)
                     used_groups = set(map(lambda a: child.vertex_groups[a].name, used_groups))
                     used_bones.update(used_groups)
+
+                    for vgroup in child.vertex_groups:
+                        if not vgroup.name in used_groups:
+                            child.vertex_groups.remove(vgroup)
                 
                 mode(mode='EDIT')
                 edit_bones = armature.data.edit_bones
@@ -356,6 +372,10 @@ class RIGIALL_OT_remove_unused_bones_and_vgroups(Operator):
                     used_weights = {child.vertex_groups[key].name : value for key, value in used_weights.items()}
                     used_bone_weights.update(used_weights)
 
+                    for vgroup in child.vertex_groups:
+                        if not vgroup.name in used_groups:
+                            child.vertex_groups.remove(vgroup)
+
                 used_bone_weights = set([key for key, value in used_bone_weights.items() if value > 0.0 ])
                 mode(mode='EDIT')
                 edit_bones = armature.data.edit_bones
@@ -374,7 +394,8 @@ classes = [
     rigiall_ot_remove_def_prefix,
     rigiall_ot_deduplicate_boneshapes,
     RIGIALL_OT_remove_unused_vgroups,
-    RIGIALL_OT_remove_unused_bones
+    RIGIALL_OT_remove_unused_bones,
+    RIGIALL_OT_remove_unused_bones_and_vgroups
 ]
 
 r, ur = bpy.utils.register_classes_factory(classes)

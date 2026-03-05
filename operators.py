@@ -26,11 +26,7 @@ def isolate(context: bpy.types.Context, object):
     object.select_set(True)
     context.view_layer.objects.active = object
 
-class rigiall_ot_genericText(bpy.types.Operator):
-    bl_idname = 'rigiall.textbox'
-    bl_label = 'Hints'
-    bl_description = 'A window will display any possible questions you have'
-
+class generictext(Operator):
     text: StringProperty(default='')
     icons: StringProperty()
     size: StringProperty()
@@ -66,6 +62,11 @@ class rigiall_ot_genericText(bpy.types.Operator):
 
     def execute(self, context):
         return {'FINISHED'}
+
+class rigiall_ot_genericText(generictext):
+    bl_idname = 'rigiall.textbox'
+    bl_label = 'Hints'
+    bl_description = 'A window will display any possible questions you have'
 
 class rigiall_ot_makeArm(Operator):
     
@@ -134,7 +135,7 @@ class rigiall_ot_makeArm(Operator):
 
         return {'FINISHED'}
     
-class rigiall_ot_makeLeg(rigiall_ot_genericText):
+class rigiall_ot_makeLeg(generictext):
     
     bl_idname = 'rigiall.makeleg'
     bl_label = 'Make leg'
@@ -326,7 +327,7 @@ class rigiall_ot_makeLeg(rigiall_ot_genericText):
             self.report({'WARNING'}, 'Rigify is not enabled, limb generation could not be completed!')
         return {'FINISHED'}
         
-class rigiall_ot_makeSpine(rigiall_ot_genericText):
+class rigiall_ot_makeSpine(generictext):
     
     bl_idname = 'rigiall.makespine'
     bl_label = 'Make Spine'
@@ -411,7 +412,7 @@ class rigiall_ot_makeNeck(Operator):
             self.report({'WARNING'}, 'Rigify is not enabled, limb generation could not be completed!')
         return {'FINISHED'}
     
-class rigiall_ot_makeFingers(rigiall_ot_genericText):
+class rigiall_ot_makeFingers(generictext):
     
     bl_idname = 'rigiall.makefingers'
     bl_label = 'Make Fingers'
@@ -700,7 +701,7 @@ def textBox(self, sentence, icon='NONE', line=56):
                 layout.row().label(text=mix)
                 return None
 
-class rigiall_ot_initialize(Operator):
+class rigiall_ot_initialize(generictext):
     bl_idname = 'rigiall.init'
     bl_label = 'Initialize Rig'
     bl_description = 'Initialize the rig with bonegroups and assigned layers.'
@@ -718,8 +719,8 @@ class rigiall_ot_initialize(Operator):
         if context.object.get('rig_ui'): return False
         return True
     
-    def invoke(self, context, event):
-        return context.window_manager.invoke_props_dialog(self, width=350)
+    def draw_extra(self, context):
+        self.layout.prop(self, 'preserve_original_bones')
 
     def execute(self, context):
         try:

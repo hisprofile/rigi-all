@@ -2,7 +2,7 @@ import bpy
 from bpy.types import Operator
 from bpy.props import EnumProperty, StringProperty, BoolProperty
 from bpy.utils import register_classes_factory
-from .operators import mode, mark, rigiall_ot_genericText
+from .operators import mode, mark, generictext
 from .main import get_bone_chains, connect_chains, iter_two, null
 
 valids = ()
@@ -58,6 +58,7 @@ class rigiall_ot_makearms(Operator):
         
         for bone in all_bones:
             mark(bone)
+            side = determine_side(props, chain[0])
             
             for col in bone.bone.collections:
                 col.unassign(bone)
@@ -97,7 +98,7 @@ class rigiall_ot_makearms(Operator):
 
         return {'FINISHED'}
 
-class rigiall_ot_makelegs(rigiall_ot_genericText):
+class rigiall_ot_makelegs(generictext):
     
     bl_idname = 'rigiall.makelegs'
     bl_label = 'Make Legs'
@@ -186,6 +187,7 @@ class rigiall_ot_makelegs(rigiall_ot_genericText):
 
         for bone in all_bones:
             mark(bone)
+            side = determine_side(props, chain[0])
             
             for col in bone.bone.collections:
                 col.unassign(bone)
@@ -294,7 +296,7 @@ class rigiall_ot_makelegs(rigiall_ot_genericText):
                 self.report({'WARNING'}, 'Rigify is not enabled, limb generation could not be completed!')
         return {'FINISHED'}    
 
-class rigiall_ot_makefingers(rigiall_ot_genericText):
+class rigiall_ot_makefingers(generictext):
     
     bl_idname = 'rigiall.makefingers_ambi'
     bl_label = 'Make Fingers'
@@ -396,6 +398,7 @@ class rigiall_ot_makeshoulders(Operator):
 
         for bone in all_bones:
             mark(bone)
+            side = determine_side(props, bone)
             
             for col in bone.bone.collections:
                 col.unassign(bone)
