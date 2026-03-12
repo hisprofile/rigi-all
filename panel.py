@@ -308,9 +308,10 @@ class RIGIALL_PT_panel(Panel):
             row = col.row()
             row.label(text='Fuse Armatures')
             op = row.operator('rigiall.textbox', text='', icon='QUESTION')
-            op.text = '''This tool joins two selected armatures, but prevents bones from being duplicated. This essentially adds to an armature.'''
-            op.size = '64'
-            op.icons = 'QUESTION'
+            op.text = '''This tool joins two selected armatures, but prevents bones from being duplicated. This essentially adds to an armature.
+Bones on the host, or target object, are prioritized over the bones of the parasite object.'''
+            op.size = '64,64'
+            op.icons = 'QUESTION,NONE'
             box = col.box()
             main_row = box.row()
             row = main_row.row(align=True)
