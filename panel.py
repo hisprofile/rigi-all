@@ -435,8 +435,13 @@ Items in a visiblity switch do not require an object. You can leave them empty t
                         r = row.row(align=True)
                         r.alignment = 'LEFT'
                         r.label(text='Object:')
-                        r = row.row()
-                        r.prop(item, 'object', text='')
+                        r = row.row(align=True)
+                        if item.use_multiple_objects:
+                            r.label(text=f'{len(item.objects)} objects')
+                            r.operator('rigiall.bodygroup_item_show_objects', text='', icon='PREFERENCES').index = n
+                        else:
+                            r.prop(item, 'object', text='')
+                        r.operator('rigiall.bodygroup_item_objects_set', text='', icon='RESTRICT_SELECT_OFF').index = n
                         
                         row = row12.row()
                         r = row.row(align=True)

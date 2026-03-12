@@ -12,6 +12,12 @@ class node_input_mapper:
     def __setitem__(self, key, value):
         self.mod[self.inp_map[key]] = value
 
+# idk
+#class Operator(Operator):
+#    def __init__(self, *args, **kwargs):
+#        super().__init__(*args, **kwargs)
+#        self.bl_idname = '.'.join(self.__name__.split('_OT_')).lower()
+
 class RIGIALL_OT_make_bones_renderable(Operator):
     bl_idname = 'rigiall.make_bones_renderable'
     bl_label = 'Make Bones Renderable'
@@ -403,6 +409,100 @@ class RIGIALL_OT_bodygroup_item_move(Operator):
         menu.menu_items.move(self.index, self.index + self.move)
         
         return {'FINISHED'}
+    
+class RIGIALL_OT_bodygroup_item_objects_set(Operator):
+    bl_idname = 'rigiall.bodygroup_item_objects_set'
+    bl_label = 'Set All Selected Objects'
+    bl_description = 'On the visibility item, this subjects all selected objects to be controlled by the item'
+    index: IntProperty()
+
+    bl_options = {'UNDO'}
+
+    def execute(self, context):
+        obj = context.object
+        objects = set(context.selected_objects).difference(set([obj]))
+        helper = obj.rigiall_bodygroup_helper
+        menus = helper.bodygroup_menus[helper.index]
+        item = menus.menu_items[self.index]
+        item.objects.clear()
+        item.use_multiple_objects = False
+        item.object = None
+
+        if not objects:
+            self.report({'WARNING'}, 'You have no other objects selected!')
+            return {'CANCELLED'}
+
+        if len(objects) == 1:
+            item.object = objects.pop()
+        else:
+            item.use_multiple_objects = True
+            for object in objects:
+                ob_item = item.objects.add()
+                ob_item.object = object
+        return {'FINISHED'}
+
+class RIGIALL_OT_bodygroup_item_objects_add(Operator):
+    bl_idname = 'rigiall.bodygroup_item_objects_add'
+    bl_label = 'Add Object'
+    bl_description = 'Add an object to the visibility item'
+    bl_options = {'UNDO'}
+
+    index: IntProperty()
+
+    def execute(self, context):
+        obj = context.object
+        helper = obj.rigiall_bodygroup_helper
+        menus = helper.bodygroup_menus[helper.index]
+        item = menus.menu_items[self.index]
+        item.objects.add()
+        return {'FINISHED'}
+    
+class RIGIALL_OT_bodygroup_item_objects_remove(Operator):
+    bl_idname = 'rigiall.bodygroup_item_objects_remove'
+    bl_label = 'Remove Object'
+    bl_description = 'Add an object to the visibility item'
+    bl_options = {'UNDO'}
+
+    index: IntProperty()
+    sub_index: IntProperty()
+
+    def execute(self, context):
+        obj = context.object
+        helper = obj.rigiall_bodygroup_helper
+        menus = helper.bodygroup_menus[helper.index]
+        item = menus.menu_items[self.index]
+        item.objects.remove(self.sub_index)
+        return {'FINISHED'}
+
+class RIGIALL_OT_bodygroup_item_show_objects(Operator):
+    bl_idname = 'rigiall.bodygroup_item_show_objects'
+    bl_label = 'Show Objects'
+    bl_description = 'Show all objects associated with the visibility item'
+
+    index: IntProperty()
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, context):
+        obj = context.object
+        helper = obj.rigiall_bodygroup_helper
+        menus = helper.bodygroup_menus[helper.index]
+        item = menus.menu_items[self.index]
+
+        layout = self.layout
+        
+        for n, subject in enumerate(item.objects):
+            row = layout.row()
+            row.prop(subject, 'object', text='')
+            op = row.operator('rigiall.bodygroup_item_objects_remove', icon='REMOVE', text='')
+            op.index = self.index
+            op.sub_index = n
+
+        layout.operator('rigiall.bodygroup_item_objects_add', icon='ADD').index = self.index
+
+    def execute(self, context):
+        return {'FINISHED'}
 
 #def is_obj_controlled_by_other_switch(controller: bpy.types.Object, subject: bpy.types.Object, switch: str):
 #    sub_helper = subject.rigiall_bodygroup_helper
@@ -418,10 +518,32 @@ class RIGIALL_OT_bodygroup_item_move(Operator):
 #        return True
 #    return False
 
+def add_vis_drivers(
+        controller: bpy.types.Object,
+        subject: bpy.types.Object,
+        data_path: str,
+        index: int
+):
+    if not subject:
+        return
+    controller.update_tag()
+    for path in ['hide_viewport', 'hide_render']:
+        subject.driver_remove(path)
+        curve = subject.driver_add(path)
+        driver = curve.driver
+        driver.type = 'SCRIPTED'
+        var = driver.variables.new()
+        targs = var.targets[0]
+        targs.id_type = 'OBJECT'
+        targs.id = controller
+        targs.data_path = f'["{data_path}"]'
+        driver.expression = f'var != {index}'
+
 class RIGIALL_OT_bodygroup_single_menu_build(Operator):
     bl_idname = 'rigiall.bodygroup_single_menu_build'
     bl_label = 'Build Visibility Switch'
     bl_description = 'Build a single visiblity switch'
+    bl_options = {'UNDO'}
 
     def execute(self, context):
         obj = context.object
@@ -429,6 +551,8 @@ class RIGIALL_OT_bodygroup_single_menu_build(Operator):
         menu = helper.bodygroup_menus[helper.index]
         menu_items = menu.menu_items
         enum_items = []
+        if obj.get(menu.name) != None:
+            del obj[menu.name]
         obj[menu.name] = 0
 
         for n, item in enumerate(menu_items):
@@ -442,22 +566,13 @@ class RIGIALL_OT_bodygroup_single_menu_build(Operator):
                 )
             )
 
-            if not item.object: continue
-            subject = item.object
-            for path in ['hide_viewport', 'hide_render']:
-                subject.driver_remove(path)
-                curve = subject.driver_add(path)
-                driver = curve.driver
-                driver.type = 'SCRIPTED'
-                var = driver.variables.new()
-                targs = var.targets[0]
-                targs.id_type = 'OBJECT'
-                targs.id = obj
-                targs.data_path = f'["{menu.name}"]'
-                driver.expression = f'var != {n}'
-        
-        if obj.get(menu.name):
-            del obj[menu.name]
+            if item.object:
+                add_vis_drivers(obj, item.object, menu.name, n)
+            elif item.use_multiple_objects and item.objects:
+                for subject in item.objects:
+                    add_vis_drivers(obj, subject.object, menu.name, n)
+            else:
+                continue
         
         ui_settings = obj.id_properties_ui(menu.name)
         ui_settings.update(
@@ -473,6 +588,7 @@ class RIGIALL_OT_bodygroup_menus_build(generictext):
     bl_idname = 'rigiall.bodygroup_menus_build'
     bl_label = 'Build All Visibility Switches'
     bl_description = 'Build all visiblity switches'
+    bl_options = {'UNDO'}
 
     conflicting_controllers = None
 
@@ -484,9 +600,12 @@ class RIGIALL_OT_bodygroup_menus_build(generictext):
         helper = obj.rigiall_bodygroup_helper
         for menu in helper.bodygroup_menus:
             for item in menu.menu_items:
-                if not item.object:
+                if item.object:
+                    subject_controller[item.object].append(menu.name)
                     continue
-                subject_controller[item.object.name].append(menu.name)
+                elif item.use_multiple_objects and item.objects:
+                    for subject in item.objects:
+                        subject_controller[subject.object].append(menu.name)
 
         subject_controller = dict(
             filter(
@@ -511,7 +630,7 @@ class RIGIALL_OT_bodygroup_menus_build(generictext):
         for subject, controllers in self.conflicting_controllers.items():
             self.draw_boxes(
                 box,
-                [f'{subject}: {", ".join(controllers)}'],
+                [f'{subject.name}: {", ".join(controllers)}'],
                 ['NONE'],
                 ['72']
             )
@@ -538,6 +657,8 @@ class RIGIALL_OT_bodygroup_menus_build(generictext):
         for menu in helper.bodygroup_menus:
             menu_items = menu.menu_items
             enum_items = []
+            if obj.get(menu.name) != None:
+                del obj[menu.name]
             obj[menu.name] = 0
 
             for n, item in enumerate(menu_items):
@@ -551,22 +672,13 @@ class RIGIALL_OT_bodygroup_menus_build(generictext):
                     )
                 )
 
-                if not item.object: continue
-                subject = item.object
-                for path in ['hide_viewport', 'hide_render']:
-                    subject.driver_remove(path)
-                    curve = subject.driver_add(path)
-                    driver = curve.driver
-                    driver.type = 'SCRIPTED'
-                    var = driver.variables.new()
-                    targs = var.targets[0]
-                    targs.id_type = 'OBJECT'
-                    targs.id = obj
-                    targs.data_path = f'["{menu.name}"]'
-                    driver.expression = f'var != {n}'
-            
-            if obj.get(menu.name):
-                del obj[menu.name]
+                if item.object:
+                    add_vis_drivers(obj, item.object, menu.name, n)
+                elif item.use_multiple_objects and item.objects:
+                    for subject in item.objects:
+                        add_vis_drivers(obj, subject.object, menu.name, n)
+                else:
+                    continue
             
             ui_settings = obj.id_properties_ui(menu.name)
             ui_settings.update(
@@ -587,6 +699,10 @@ classes = [
     RIGIALL_OT_bodygroup_item_add,
     RIGIALL_OT_bodygroup_item_remove,
     RIGIALL_OT_bodygroup_item_move,
+    RIGIALL_OT_bodygroup_item_objects_add,
+    RIGIALL_OT_bodygroup_item_objects_remove,
+    RIGIALL_OT_bodygroup_item_objects_set,
+    RIGIALL_OT_bodygroup_item_show_objects,
     RIGIALL_OT_bodygroup_single_menu_build,
     RIGIALL_OT_bodygroup_menus_build
 ]

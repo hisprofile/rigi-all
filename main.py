@@ -181,11 +181,28 @@ class rigiall_group(PropertyGroup):
 
     wire_thickness: FloatProperty(name='Wire Thickness', default=0.05)
 
+class rigiall_bodygroup_item_objects(PropertyGroup):
+    object: PointerProperty(
+        type=bpy.types.Object,
+        name='Object',
+        description="The object who's visibility will be controlled"
+    )
+
 class rigiall_bodygroup_item(PropertyGroup):
     object: PointerProperty(
         type=bpy.types.Object,
         name='Object',
         description="The object who's visibility will be controlled"
+    )
+    use_multiple_objects: BoolProperty(
+        name='Use Multiple Objects',
+        description='Use multiple objects for the item',
+        default=False
+    )
+    objects: CollectionProperty(
+        type=rigiall_bodygroup_item_objects,
+        name='Item Objects',
+        description='Item objects'
     )
     name: StringProperty(
         name='Name',
@@ -244,6 +261,7 @@ class rigiall_bodygroup_helper(PropertyGroup):
 classes = [
     rigiall_prefs,
     rigiall_group,
+    rigiall_bodygroup_item_objects,
     rigiall_bodygroup_item,
     rigiall_bodygroup_menu,
     rigiall_bodygroup_helper,
