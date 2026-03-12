@@ -107,7 +107,10 @@ class RIGIALL_OT_makearm(Operator):
             for col in bone.bone.collections:
                 col.unassign(bone)
                 
-            bone_col.assign(bone)   
+            bone_col.assign(bone)
+        
+        use_mirror = obj.data.use_mirror_x
+        obj.data.use_mirror_x = False
             
         bone_list = tuple((bone.name for bone in bones))
         mode(mode='EDIT')
@@ -115,6 +118,8 @@ class RIGIALL_OT_makearm(Operator):
         for prior, next in iter_two(bone_list):
             edits[prior].tail = edits[next].head
             edits[next].use_connect = True
+
+        obj.data.use_mirror_x = use_mirror
                 
         mode(mode='POSE')
         if hasattr(bones[0], 'rigify_parameters'):
@@ -135,6 +140,7 @@ class RIGIALL_OT_makearm(Operator):
             tweak_col.name = 'Arm.R (Tweak)'
         else:
             self.report({'WARNING'}, 'Rigify is not enabled, limb generation could not be completed!')
+
 
         return {'FINISHED'}
     
@@ -194,6 +200,9 @@ class RIGIALL_OT_makeleg(generictext):
             for col in bone.bone.collections:
                 col.unassign(bone)
             bone_col.assign(bone)
+
+        use_mirror = obj.data.use_mirror_x
+        obj.data.use_mirror_x = False
 
         all_verts = np.zeros((0, 4), dtype=np.float32)
         vertex_groups = defaultdict(lambda: np.zeros(0, dtype=np.float32))
@@ -306,6 +315,7 @@ class RIGIALL_OT_makeleg(generictext):
         
         mode(mode='POSE')
         mark(obj.pose.bones[heel_name])
+        obj.data.use_mirror_x = use_mirror
 
         if hasattr(bones[0], 'rigify_parameters'):
             bones[0].rigify_type = 'limbs.leg'
@@ -453,6 +463,9 @@ class RIGIALL_OT_makefingers(generictext):
         bone_col = context.object.data.collections_all
         bones = context.selected_pose_bones
 
+        use_mirror = obj.data.use_mirror_x
+        obj.data.use_mirror_x = False
+
         for bone in bones:
             mark(bone)
 
@@ -473,6 +486,9 @@ class RIGIALL_OT_makefingers(generictext):
                 edits[next].use_connect = True
                     
         mode(mode='POSE')
+        
+        obj.data.use_mirror_x = use_mirror
+
         if hasattr(bpy.types.PoseBone, 'rigify_parameters'):
             for chain in fingers:
                 bone = context.object.pose.bones.get(chain[0])
