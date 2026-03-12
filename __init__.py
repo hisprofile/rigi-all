@@ -2,8 +2,8 @@ bl_info = {
     "name": "Rigi-All",
     "description": "Speeds up the Rigify process",
     "author": "hisanimations",
-    "version": (1, 5, 2),
-    "blender": (4, 0, 0),
+    "version": (1, 6, 0),
+    "blender": (4, 1, 0),
     "location": "View3D > Rigi-All",
     "warning": "", # used for warning icon and text in addons panel
     "doc_url": "https://github.com/hisprofile/rigi-all/tree/main",
@@ -12,16 +12,16 @@ bl_info = {
 }
 
 from . import (
-    ambidextrous_operators,
     main,
     operators,
+    operators_ambidextrous,
     operators_cleanup,
     operators_miscellaneous,
     panel
 )
 
 def register():
-    ambidextrous_operators.register()
+    operators_ambidextrous.register()
     main.register()
     operators.register()
     operators_cleanup.register()
@@ -29,7 +29,7 @@ def register():
     panel.register()
 
 def unregister():
-    ambidextrous_operators.unregister()
+    operators_ambidextrous.unregister()
     main.unregister()
     operators.unregister()
     operators_cleanup.unregister()

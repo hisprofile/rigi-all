@@ -4,7 +4,7 @@ from bpy.props import EnumProperty, BoolProperty
 from .operators import generictext, isolate, mode
 from .main import null
 
-class rigiall_ot_tweakmesh(Operator):
+class RIGIALL_OT_tweakmesh(Operator):
     bl_idname = 'rigiall.tweakmesh'
     bl_label = 'Add "DEF-" to Vertex Groups'
     bl_description = 'Change the name of weight paints to be compatible with the rig. Recommended'
@@ -32,7 +32,7 @@ class rigiall_ot_tweakmesh(Operator):
                 group.name = 'DEF-' + group.name
         return {'FINISHED'}
 
-class rigiall_ot_remove_def_prefix(generictext):
+class RIGIALL_OT_remove_def_prefix(generictext):
     bl_idname = 'rigiall.remove_def_prefix'
     bl_label = 'Remove "DEF-" from Bone Names'
     bl_description = 'Change the name of deform bones to be compatible with the mesh. Not recommended'
@@ -44,7 +44,7 @@ class rigiall_ot_remove_def_prefix(generictext):
     
     def execute(self, context):
         if context.object.data.collections_all.get('overlaying'):
-            self.report({'ERROR'}, "This is not necessary! You already have the original bone names from the merged armature!")
+            self.report({'ERROR'}, "This is not necessary! You already have the original bone names from preserving them!")
             return {'CANCELLED'}
         
         obj_copy = context.object.copy()
@@ -83,7 +83,7 @@ class rigiall_ot_remove_def_prefix(generictext):
 
         return {'FINISHED'}
 
-class rigiall_ot_deduplicate_boneshapes(Operator):
+class RIGIALL_OT_deduplicate_boneshapes(Operator):
     bl_idname = 'rigiall.deduplicate_boneshapes'
     bl_label = 'De-duplicate Boneshapes'
     bl_description = 'De-duplicate the bone shapes on the active armature'
@@ -128,11 +128,22 @@ class rigiall_ot_deduplicate_boneshapes(Operator):
             'objects', []
         )
 
-        for bone_shape in [*existing_bone_shapes, *all_bone_shapes]:
+        all_shapes = [*existing_bone_shapes, *all_bone_shapes]
+        all_count = len(all_shapes)
+
+        for bone_shape in all_shapes:
             if not isinstance(getattr(bone_shape, 'data', None), bpy.types.Mesh): continue
             key = hash(tuple((round(axis, 6) for v in bone_shape.data.vertices[:10] for axis in v.co)))
             first = bone_shapes_master.setdefault(key, bone_shape)
             bone_shape.user_remap(first)
+
+        final_count = len(bone_shapes_master.keys())
+
+        if all_count > final_count:
+            self.report({'INFO'}, f'Bone shape count decreased from {all_count} to {final_count}')
+        elif all_count == final_count:
+            self.report({'INFO'}, f'Bone shapes count remains at {final_count}, no change!')
+
         return {'FINISHED'}
 
 class keep_highest_value(dict):
@@ -188,11 +199,15 @@ class RIGIALL_OT_remove_unused_vgroups(Operator):
         self.layout.prop(self, 'only_remove_bone_groups')
         self.layout.prop(self, 'remove_if_zero_weight')
 
-    def remove_groups(self, context: bpy.types.Context, objs: list[bpy.types.Object], remove_zero_weight: bool, only_remove_bone_groups: bool = True):
+    def execute(self, context):
+        objs = set(filter(lambda a: a.type == 'MESH', context.selected_objects))
+        obj_count = len(objs)
+        tally = 0
         for obj in objs:
             if obj.type != 'MESH': continue
+            if obj.data.library or obj.data.override_library: continue
 
-            if not only_remove_bone_groups:
+            if not self.only_remove_bone_groups:
                 pass
             elif (armature := next(filter(lambda a: a.type == 'ARMATURE', obj.modifiers), null).object):
                 bones = set(map(lambda a: a.name, armature.data.bones))
@@ -200,34 +215,54 @@ class RIGIALL_OT_remove_unused_vgroups(Operator):
                 bones = set(map(lambda a: a.name, armature.data.bones))
             else:
                 self.report({'ERROR'}, f'"Only remove bone groups" was enabled, but "{obj.name}" has no referenced armature!')
+                return {'CANCELLED'}
 
-            if not remove_zero_weight:
-                used_groups = get_used_groups(obj.data)
-                used_groups = set(map(lambda a: obj.vertex_groups[a].name, used_groups))
+            if not self.remove_if_zero_weight:
                 vgroups = obj.vertex_groups
+                all_groups = set(map(lambda a: a.name, vgroups))
+                used_groups = get_used_groups(obj.data)
+                used_groups = set(map(lambda a: vgroups[a].name, used_groups))
+                unused_groups = all_groups.difference(used_groups)
 
-                for group in list(vgroups):
-                    if only_remove_bone_groups and not (group.name in bones):
-                        continue
-                    if not group.name in used_groups:
-                        vgroups.remove(group)
+                if self.only_remove_bone_groups:
+                    unused_groups.intersection_update(bones)
+                for group in unused_groups:
+                    group = vgroups[group]
+                    vgroups.remove(group)
+
+                tally += len(unused_groups)
+                self.report({'INFO'}, f'{obj.name}: Removed {len(unused_groups)} group(s)')
+                print(*[f'"{obj.name}" removed vertex groups:', *sorted(unused_groups)], sep='\n\t')
             else:
+                vgroups = obj.vertex_groups
+                all_groups = set(map(lambda a: a.name, vgroups))
                 used_groups, used_weights = get_used_groups_and_weights(obj.data)
                 used_groups = set(map(lambda a: obj.vertex_groups[a].name, used_groups))
-                used_weights = set([obj.vertex_groups[key].name for key, value in used_weights.items() if value > 0.0])
-                vgroups = obj.vertex_groups
-                for group in list(vgroups):
-                    if only_remove_bone_groups and not (group.name in bones):
-                        continue
-                    if not group.name in used_groups:
-                        vgroups.remove(group)
-                        continue
-                    if not group.name in used_weights:
-                        vgroups.remove(group)
-        return {'FINISHED'}
+                
+                unused_groups = all_groups.difference(used_groups)
+                unused_weights = set([obj.vertex_groups[key].name for key, value in used_weights.items() if value == 0.0])
+                unused_groups.update(unused_weights)
 
-    def execute(self, context):
-        return self.remove_groups(context, context.selected_objects, self.remove_if_zero_weight, self.only_remove_bone_groups)
+                if self.only_remove_bone_groups:
+                    unused_groups.intersection_update(bones)
+                
+                for group in unused_groups:
+                    group = vgroups[group]
+                    vgroups.remove(group)
+                
+                tally += len(unused_groups)
+                self.report({'INFO'}, f'{obj.name}: Removed {len(unused_groups)} group(s)')
+                print(*[f'"{obj.name}" removed vertex groups:', *sorted(unused_groups)], sep='\n\t')
+        
+        self.report({'INFO'}, ' '.join([
+            'Removed',
+            str(tally),
+            'vertex group' if tally == 1 else 'vertex groups',
+            'across',
+            str(obj_count),
+            'object.' if obj_count == 1 else 'objects. Open INFO or Console for more information'
+        ]))
+        return {'FINISHED'}
 
 class RIGIALL_OT_remove_unused_bones(Operator):
     bl_idname = 'rigiall.remove_unused_bones'
@@ -248,7 +283,10 @@ class RIGIALL_OT_remove_unused_bones(Operator):
         self.layout.prop(self, 'remove_if_zero_weight')
     
     def execute(self, context):
-        for armature in context.selected_objects:
+        armatures = set(filter(lambda obj: obj.type == 'ARMATURE', context.selected_objects))
+        armature_count = len(armatures)
+        tally = 0
+        for armature in armatures:
             isolate(context, armature)
             previous_mode = armature.mode
             children = armature.children
@@ -258,50 +296,74 @@ class RIGIALL_OT_remove_unused_bones(Operator):
             )
             # if child has an armature modifier targeting the armature, or parented to the armature using the "ARMATURE" parent type
             children = set(filter(
-                lambda obj: next(filter(lambda modifier: (modifier.type == 'ARMATURE') and modifier.object, obj.modifiers), null).object == armature or
+                lambda obj: next(filter(lambda modifier: (modifier.type == 'ARMATURE') and getattr(modifier, 'object', None) == armature, obj.modifiers), null) or
                 ((obj.parent == armature) and (obj.parent_type == 'ARMATURE')),
                 children
             ))
 
             if not children:
-                self.report({'ERROR'}, f'Armature "{armature.name}" has no valid children to reference!')
+                self.report({'ERROR'}, f'Armature "{armature.name}" has no valid mesh children to reference!')
                 return {'CANCELLED'}
             
             if not self.remove_if_zero_weight:
+                all_bones = set(map(lambda bone: bone.name, armature.data.bones))
                 used_bones = set()
                 for child in children:
                     used_groups = get_used_groups(child.data)
                     used_groups = set(map(lambda a: child.vertex_groups[a].name, used_groups))
                     used_bones.update(used_groups)
+
+                unused_bones = all_bones.difference(used_bones)
+                tally += len(unused_bones)
+
+                self.report({'INFO'}, f'{armature.name}: Removed {len(unused_bones)} bone(s)')
+                print(*[f'"{armature.name}" removed bones:', *sorted(unused_bones)], sep='\n\t')
                 
                 mode(mode='EDIT')
                 edit_bones = armature.data.edit_bones
-                for bone in edit_bones:
-                    if not bone.name in used_bones:
-                        edit_bones.remove(bone)
+                for bone in unused_bones:
+                    bone = edit_bones[bone]
+                    edit_bones.remove(bone)
 
                 mode(mode=previous_mode)
 
             else:
+                all_bones = set(map(lambda bone: bone.name, armature.data.bones))
                 used_bones = set()
                 used_bone_weights = keep_highest_value()
                 for child in children:
+                    vgroups = child.vertex_groups
                     used_groups, used_weights = get_used_groups_and_weights(child.data)
-                    used_groups = set(map(lambda a: child.vertex_groups[a].name, used_groups))
+                    used_groups = set(map(lambda a: vgroups[a].name, used_groups))
                     used_bones.update(used_groups)
-                    used_weights = {child.vertex_groups[key].name : value for key, value in used_weights.items()}
+                    used_weights = {vgroups[key].name : value for key, value in used_weights.items()}
                     used_bone_weights.update(used_weights)
 
-                used_bone_weights = set([key for key, value in used_bone_weights.items() if value > 0.0 ])
+                unused_bones = all_bones.difference(used_bones)
+                unused_bone_weights = set([key for key, value in used_bone_weights.items() if value == 0.0])
+                unused_bones.update(unused_bone_weights)
+
+                tally += len(unused_bones)
+
+                self.report({'INFO'}, f'{armature.name}: Removed {len(unused_bones)} group(s)')
+                print(*[f'"{armature.name}" removed:', *sorted(unused_bones)], sep='\n\t')
+                
                 mode(mode='EDIT')
                 edit_bones = armature.data.edit_bones
-                for bone in edit_bones:
-                    if not bone.name in used_bones:
-                        edit_bones.remove(bone)
-                        continue
-                    if not bone.name in used_bone_weights:
-                        edit_bones.remove(bone)
+                for bone in unused_bones:
+                    bone = edit_bones[bone]
+                    edit_bones.remove(bone)
+
                 mode(mode=previous_mode)
+
+        self.report({'INFO'}, ' '.join([
+            'Removed',
+            str(tally),
+            'bone' if tally == 1 else 'bones',
+            'across',
+            str(armature_count),
+            'armature.' if armature_count == 1 else 'armatures. Open INFO or Console for more information'
+        ]))
 
         return {'FINISHED'}
 
@@ -324,7 +386,11 @@ class RIGIALL_OT_remove_unused_bones_and_vgroups(Operator):
         self.layout.prop(self, 'remove_if_zero_weight')
 
     def execute(self, context):
-        for armature in context.selected_objects:
+        armatures = set(filter(lambda obj: obj.type == 'ARMATURE', context.selected_objects))
+        armature_count = len(armatures)
+        vgroup_tally = 0
+        bone_tally = 0
+        for armature in armatures:
             isolate(context, armature)
             previous_mode = armature.mode
             children = armature.children
@@ -334,7 +400,7 @@ class RIGIALL_OT_remove_unused_bones_and_vgroups(Operator):
             )
             # if child has an armature modifier targeting the armature, or parented to the armature using the "ARMATURE" parent type
             children = set(filter(
-                lambda obj: next(filter(lambda modifier: (modifier.type == 'ARMATURE') and modifier.object, obj.modifiers), null).object == armature or
+                lambda obj: next(filter(lambda modifier: (modifier.type == 'ARMATURE') and getattr(modifier, 'object', None) == armature, obj.modifiers), null) or
                 ((obj.parent == armature) and (obj.parent_type == 'ARMATURE')),
                 children
             ))
@@ -344,58 +410,168 @@ class RIGIALL_OT_remove_unused_bones_and_vgroups(Operator):
                 return {'CANCELLED'}
             
             if not self.remove_if_zero_weight:
+                all_bones = set(map(lambda bone: bone.name, armature.data.bones))
                 used_bones = set()
                 for child in children:
+                    vgroups = child.vertex_groups
+                    all_groups = set(map(lambda a: a.name, vgroups))
                     used_groups = get_used_groups(child.data)
-                    used_groups = set(map(lambda a: child.vertex_groups[a].name, used_groups))
+                    used_groups = set(map(lambda a: vgroups[a].name, used_groups))
                     used_bones.update(used_groups)
 
-                    for vgroup in child.vertex_groups:
-                        if not vgroup.name in used_groups:
-                            child.vertex_groups.remove(vgroup)
-                
+                    unused_groups = all_groups.difference(used_groups)
+                    unused_groups.intersection_update(all_bones)
+
+                    vgroup_tally += len(unused_groups)
+
+                    self.report({'INFO'}, f'{child.name}: Removed {len(unused_groups)} group(s)')
+                    print(*[f'Mesh "{child.name}" removed groups:', *sorted(unused_groups)], sep='\n\t')
+
+                    for group in unused_groups:
+                        group = vgroups[group]
+                        vgroups.remove(group)
+
+                unused_bones = all_bones.difference(used_bones)
+                bone_tally += len(unused_bones)
+
+                self.report({'INFO'}, f'{armature.name}: Removed {len(unused_bones)} bone(s)')
+                print(*[f'"{armature.name}" removed bones:', *sorted(unused_bones)], sep='\n\t')
+
                 mode(mode='EDIT')
+
                 edit_bones = armature.data.edit_bones
-                for bone in edit_bones:
-                    if not bone.name in used_bones:
-                        edit_bones.remove(bone)
+                for bone in unused_bones:
+                    bone = edit_bones[bone]
+                    edit_bones.remove(bone)
 
                 mode(mode=previous_mode)
 
             else:
+                all_bones = set(map(lambda bone: bone.name, armature.data.bones))
                 used_bones = set()
                 used_bone_weights = keep_highest_value()
                 for child in children:
+                    vgroups = child.vertex_groups
+                    all_groups = set(map(lambda a: a.name, vgroups))
                     used_groups, used_weights = get_used_groups_and_weights(child.data)
-                    used_groups = set(map(lambda a: child.vertex_groups[a].name, used_groups))
+                    used_groups = set(map(lambda a: vgroups[a].name, used_groups))
                     used_bones.update(used_groups)
-                    used_weights = {child.vertex_groups[key].name : value for key, value in used_weights.items()}
+                    used_weights = {vgroups[key].name: value for key, value in used_weights.items()}
                     used_bone_weights.update(used_weights)
 
-                    for vgroup in child.vertex_groups:
-                        if not vgroup.name in used_groups:
-                            child.vertex_groups.remove(vgroup)
+                    unused_groups = all_groups.difference(used_groups)
+                    unused_weights = set([key for key, value in used_weights.items() if value == 0.0])
+                    unused_groups.update(unused_weights)
+                    unused_groups.intersection_update(all_bones)
 
-                used_bone_weights = set([key for key, value in used_bone_weights.items() if value > 0.0 ])
+                    vgroup_tally += len(unused_groups)
+
+                    self.report({'INFO'}, f'{child.name}: Removed {len(unused_groups)} group(s)')
+                    print(*[f'Mesh "{child.name}" removed groups:', *sorted(unused_groups)], sep='\n\t')
+
+                    for group in unused_groups:
+                        group = vgroups[group]
+                        vgroups.remove(group)
+
+                unused_bone_weights = set([key for key, value in used_bone_weights.items() if value == 0.0 ])
+
+                unused_bones = all_bones.difference(used_groups)
+                unused_bones.update(unused_bone_weights)
+                bone_tally += len(unused_bones)
+
+                self.report({'INFO'}, f'{armature.name}: Removed {len(unused_bones)} bone(s)')
+                print(*[f'"{armature.name}" removed bones:', *sorted(unused_bones)], sep='\n\t')
+
                 mode(mode='EDIT')
                 edit_bones = armature.data.edit_bones
-                for bone in edit_bones:
-                    if not bone.name in used_bones:
-                        edit_bones.remove(bone)
-                        continue
-                    if not bone.name in used_bone_weights:
-                        edit_bones.remove(bone)
+                for bone in unused_bones:
+                    bone = edit_bones[bone]
+                    edit_bones.remove(bone)
+
                 mode(mode=previous_mode)
 
         return {'FINISHED'}
 
+class RIGIALL_OT_fuse_armatures(Operator):
+    bl_idname = 'rigiall.fuse_armatures'
+    bl_label = 'Fuse Armatures'
+    bl_description = 'Join two armatures, but take the extra step to remove duplicate bones'
+    bl_options = {'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        rigiall_props = context.window_manager.rigiall_props
+        return ((rigiall_props.host and rigiall_props.parasite) and len({rigiall_props.host, rigiall_props.parasite}) > 1) or (
+            len(context.selected_objects) == 2 and
+            all([obj.type == 'ARMATURE' for obj in context.selected_objects])
+        )
+    
+    def execute(self, context):
+        props = context.window_manager.rigiall_props
+        if props.host and props.parasite:
+            host = props.host
+            parasite = props.parasite
+        elif (
+            len(context.selected_objects) == 2 and
+            all([obj.type == 'ARMATURE' for obj in context.selected_objects])
+        ):
+            objs = context.selected_objects
+            host = context.object
+            objs.remove(host)
+            parasite = objs[0]
+        else:
+            return {'CANCELLED'}
+        
+        mode_bak = host.mode
+
+        pairs = []
+        keep = set()
+
+        for bone in parasite.data.bones:
+            if host.data.bones.get(bone.name): continue
+            keep.add(bone.name)
+            if not host.data.bones.get(getattr(bone.parent, 'name', '')): continue
+            pairs.append((bone.name, bone.parent.name))
+            
+        isolate(context, parasite)
+
+        mode(mode='EDIT')
+
+        ebones = parasite.data.edit_bones
+
+        for ebone in ebones:
+            if ebone.name in keep: continue
+            ebones.remove(ebone)
+            
+        mode(mode='OBJECT')
+
+        isolate(context, host)
+        parasite.select_set(True)
+        parasite.matrix_world = host.matrix_world
+        bpy.ops.object.join()
+
+        mode(mode='EDIT')
+        ebones = host.data.edit_bones
+        for bone, parent in pairs:
+            bone, parent = ebones.get(bone), ebones.get(parent)
+            bone.parent = parent
+
+        mode(mode=mode_bak)
+
+        props.host = None
+        props.parasite = None
+
+        return {'FINISHED'}
+
+
 classes = [
-    rigiall_ot_tweakmesh,
-    rigiall_ot_remove_def_prefix,
-    rigiall_ot_deduplicate_boneshapes,
+    RIGIALL_OT_tweakmesh,
+    RIGIALL_OT_remove_def_prefix,
+    RIGIALL_OT_deduplicate_boneshapes,
     RIGIALL_OT_remove_unused_vgroups,
     RIGIALL_OT_remove_unused_bones,
-    RIGIALL_OT_remove_unused_bones_and_vgroups
+    RIGIALL_OT_remove_unused_bones_and_vgroups,
+    RIGIALL_OT_fuse_armatures
 ]
 
 r, ur = bpy.utils.register_classes_factory(classes)

@@ -1,6 +1,7 @@
 import bpy
 from bpy.types import Operator
-from bpy.props import BoolProperty
+from bpy.props import BoolProperty, IntProperty
+from .operators import generictext
 
 class node_input_mapper:
     def __init__(self, modifier: bpy.types.NodesModifier):
@@ -27,6 +28,10 @@ class RIGIALL_OT_make_bones_renderable(Operator):
         return context.window_manager.invoke_props_dialog(self)
 
     def execute(self, context):
+        if bpy.app.version < (4, 2, 0):
+            self.report({'ERROR'}, 'This feature is for Blender 4.2+')
+            return {'CANCELLED'}
+        
         from mathutils import Matrix, Vector
         from .main import initialize_wire_to_curve
 
@@ -194,9 +199,396 @@ class RIGIALL_OT_make_bones_renderable(Operator):
         blend_data.batch_remove(ids_for_deletion)
 
         return {'FINISHED'}
+
+class RIGIALL_OT_bodygroup_menu_add(generictext):
+    bl_idname = 'rigiall.bodygroup_menu_add'
+    bl_label = 'Add Visibility Switch'
+    bl_description = 'A tool that helps make menu switches to hide/show mesh objects. All selected objects will be tied to the active object' 
+
+    bl_options = {'UNDO'}
+
+    conflicting_objects = None
+
+    @classmethod
+    def poll(cls, context):
+        return bool(getattr(context, 'object', False))
     
+    def invoke(self, context, event):
+        obj = context.object
+        items = set(context.selected_objects).difference(set([obj]))
+        conflicting_objects = list()
+
+        for subject in items:
+            drivers = getattr(subject.animation_data, 'drivers', None)
+            if not drivers:
+                continue
+            if drivers.find('hide_viewport') or drivers.find('hide_render'):
+                conflicting_objects.append(subject)
+        
+        if conflicting_objects:
+            self.conflicting_objects = conflicting_objects
+            return context.window_manager.invoke_props_dialog(self, width=350)
+        return self.execute(context)
+        
+    def draw(self, context):
+        layout = self.layout
+        sentence = ['Warning! The following objects already have their visibility driven:']
+        icon = ['ERROR']
+        size = ['56']
+        self.draw_boxes(layout, sentence, icon, size)
+
+        box = layout.box()
+        for obj in self.conflicting_objects:
+            box.label(text=obj.name)
+        
+        sentence = [
+            'Continuing will not immediately overwrite their driver data, but building the final visiblity switch will.',
+            'Continue anyways?'
+        ]
+        icon = [
+            'NONE',
+            'QUESTION'
+        ]
+        size = [
+            '64',
+            '56'
+        ]
+
+        self.draw_boxes(layout, sentence, icon, size)
+
+    def execute(self, context):
+        obj = context.object
+        items = set(context.selected_objects).difference(set([obj]))
+        helper = obj.rigiall_bodygroup_helper
+        menus = helper.bodygroup_menus
+
+        tally = 0
+        suffix = ''
+        name = 'Visibility Switch'
+
+        while menus.get(name + suffix, False):
+            tally += 1
+            suffix = ' ' + str(tally)
+
+        new_menu = menus.add()
+        new_menu.name = name + suffix
+
+        menu_items = new_menu.menu_items
+
+        for item in items:
+            new_item = menu_items.add()
+            new_item.name = item.name
+            new_item.object = item
+
+        helper.index = len(menus)-1
+        helper.active_item = len(menus)-1
+
+        context.area.tag_redraw()
+
+        return {'FINISHED'}
+    
+class RIGIALL_OT_bodygroup_menu_remove(Operator):
+    bl_idname = 'rigiall.bodygroup_menu_remove'
+    bl_label = 'Remove Bodygroup Menu'
+    bl_description = 'Remove bodygroup menu' 
+
+    bl_options = {'UNDO'}
+
+    remove_associated_property: BoolProperty(
+        name='Remove Custom Property',
+        description='If enabled, the custom property switch will be removed along with the visibility menu item',
+        default=True
+    )
+
+    def invoke(self, context, event):
+        obj = context.object
+        helper = obj.rigiall_bodygroup_helper
+        menus = helper.bodygroup_menus
+        menu = menus[helper.index]
+
+        if obj.get(menu.name) != None:
+            return context.window_manager.invoke_props_dialog(self)
+        
+        return self.execute(context)
+
+    def execute(self, context):
+        obj = context.object
+        helper = obj.rigiall_bodygroup_helper
+        menus = helper.bodygroup_menus
+        menu = menus[helper.index]
+
+        if (obj.get(menu.name) != None) and self.remove_associated_property:
+            del obj[menu.name]
+
+        menus.remove(helper.index)
+        helper.index = min(helper.index, len(menus)-1)
+        context.area.tag_redraw()
+        return {'FINISHED'}
+
+class RIGIALL_OT_bodygroup_menu_edit(Operator):
+    bl_idname = 'rigiall.bodygroup_menu_edit'
+    bl_label = 'Edit Bodygroup Menu'
+    bl_description = 'Edit bodygroup menu' 
+
+    bl_options = {'UNDO'}
+
+    def execute(self, context):
+        obj = context.object
+        helper = obj.rigiall_bodygroup_helper
+        helper.active_item = helper.index
+        return {'FINISHED'}
+
+class RIGIALL_OT_bodygroup_menu_back(Operator):
+    bl_idname = 'rigiall.bodygroup_menu_back'
+    bl_label = 'Go Back'
+    bl_description = 'Go back to main menu' 
+
+    bl_options = {'UNDO'}
+
+    def execute(self, context):
+        obj = context.object
+        helper = obj.rigiall_bodygroup_helper
+        helper.active_item = -1
+        return {'FINISHED'}
+
+class RIGIALL_OT_bodygroup_item_add(Operator):
+    bl_idname = 'rigiall.bodygroup_item_add'
+    bl_label = 'Add Visibility Item'
+    bl_description = 'Add a new item to the visibility switch'
+
+    bl_options = {'UNDO'}
+
+    def execute(self, context):
+        obj = context.object
+        helper = obj.rigiall_bodygroup_helper
+        menu = helper.bodygroup_menus[helper.index]
+
+        menu.menu_items.add()
+        return {'FINISHED'}
+    
+class RIGIALL_OT_bodygroup_item_remove(Operator):
+    bl_idname = 'rigiall.bodygroup_item_remove'
+    bl_label = 'Remove Visibility Item'
+    bl_description = 'Remove an item from the visibility switch'
+    index: IntProperty()
+
+    bl_options = {'UNDO'}
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_confirm(self, event)
+
+    def execute(self, context):
+        obj = context.object
+        helper = obj.rigiall_bodygroup_helper
+        menu = helper.bodygroup_menus[helper.index]
+
+        menu.menu_items.remove(self.index)
+        
+        return {'FINISHED'}
+    
+class RIGIALL_OT_bodygroup_item_move(Operator):
+    bl_idname = 'rigiall.bodygroup_item_move'
+    bl_label = 'Move Visibility Item'
+    bl_description = 'Move an item in the visibility switch'
+    index: IntProperty()
+    move: IntProperty()
+
+    bl_options = {'UNDO'}
+
+    def execute(self, context):
+        obj = context.object
+        helper = obj.rigiall_bodygroup_helper
+        menu = helper.bodygroup_menus[helper.index]
+
+        menu.menu_items.move(self.index, self.index + self.move)
+        
+        return {'FINISHED'}
+
+#def is_obj_controlled_by_other_switch(controller: bpy.types.Object, subject: bpy.types.Object, switch: str):
+#    sub_helper = subject.rigiall_bodygroup_helper
+#    sub_controller = sub_helper.visibility_controller
+#    sub_switch_name = sub_helper.switch_name
+#    drivers = getattr(subject.animation_data, 'drivers', None)
+#    if not drivers:
+#        return False
+#    has_vis_drivers = bool(drivers.find('hide_viewport')) or bool(drivers.find('hide_render'))
+#    if has_vis_drivers and sub_controller and sub_switch_name:
+#        return (sub_controller != controller) or (sub_switch_name != switch)
+#    elif has_vis_drivers:
+#        return True
+#    return False
+
+class RIGIALL_OT_bodygroup_single_menu_build(Operator):
+    bl_idname = 'rigiall.bodygroup_single_menu_build'
+    bl_label = 'Build Visibility Switch'
+    bl_description = 'Build a single visiblity switch'
+
+    def execute(self, context):
+        obj = context.object
+        helper = obj.rigiall_bodygroup_helper
+        menu = helper.bodygroup_menus[helper.index]
+        menu_items = menu.menu_items
+        enum_items = []
+        obj[menu.name] = 0
+
+        for n, item in enumerate(menu_items):
+            enum_items.append(
+                (
+                    str(n),
+                    item.name,
+                    item.description,
+                    item.icon,
+                    n
+                )
+            )
+
+            if not item.object: continue
+            subject = item.object
+            for path in ['hide_viewport', 'hide_render']:
+                subject.driver_remove(path)
+                curve = subject.driver_add(path)
+                driver = curve.driver
+                driver.type = 'SCRIPTED'
+                var = driver.variables.new()
+                targs = var.targets[0]
+                targs.id_type = 'OBJECT'
+                targs.id = obj
+                targs.data_path = f'["{menu.name}"]'
+                driver.expression = f'var != {n}'
+        
+        if obj.get(menu.name):
+            del obj[menu.name]
+        
+        ui_settings = obj.id_properties_ui(menu.name)
+        ui_settings.update(
+            min=0,
+            max=len(enum_items)-1,
+            items=enum_items
+        )
+
+        self.report({'INFO'}, "Access the visiblity switch via the object's custom properties")
+        return {'FINISHED'}
+
+class RIGIALL_OT_bodygroup_menus_build(generictext):
+    bl_idname = 'rigiall.bodygroup_menus_build'
+    bl_label = 'Build All Visibility Switches'
+    bl_description = 'Build all visiblity switches'
+
+    conflicting_controllers = None
+
+    def invoke(self, context, event):
+        from collections import defaultdict
+        subject_controller = defaultdict(list)
+
+        obj = context.object
+        helper = obj.rigiall_bodygroup_helper
+        for menu in helper.bodygroup_menus:
+            for item in menu.menu_items:
+                if not item.object:
+                    continue
+                subject_controller[item.object.name].append(menu.name)
+
+        subject_controller = dict(
+            filter(
+                lambda kv: len(kv[1]) > 1,
+                subject_controller.items()
+            )
+        )
+
+        if subject_controller:
+            self.conflicting_controllers = subject_controller
+            return context.window_manager.invoke_props_dialog(self, width=500)
+        return self.execute(context)
+    
+    def draw(self, context):
+        layout = self.layout
+        sentence = ['Warning! The following objects are used in multiple switches']
+        icon = ['ERROR']
+        size = ['64']
+        self.draw_boxes(layout, sentence, icon, size)
+
+        box = layout.box()
+        for subject, controllers in self.conflicting_controllers.items():
+            self.draw_boxes(
+                box,
+                [f'{subject}: {", ".join(controllers)}'],
+                ['NONE'],
+                ['72']
+            )
+            #box.label(text=f'{subject}: {", ".join(controllers)}')
+        
+        sentence = [
+            "Only the last switch will drive the object's visibility.",
+            'Continue anyways?'
+        ]
+        icon = [
+            'NONE',
+            'QUESTION'
+        ]
+        size = [
+            '64',
+            '56'
+        ]
+
+        self.draw_boxes(layout, sentence, icon, size)
+
+    def execute(self, context):
+        obj = context.object
+        helper = obj.rigiall_bodygroup_helper
+        for menu in helper.bodygroup_menus:
+            menu_items = menu.menu_items
+            enum_items = []
+            obj[menu.name] = 0
+
+            for n, item in enumerate(menu_items):
+                enum_items.append(
+                    (
+                        str(n),
+                        item.name,
+                        item.description,
+                        item.icon,
+                        n
+                    )
+                )
+
+                if not item.object: continue
+                subject = item.object
+                for path in ['hide_viewport', 'hide_render']:
+                    subject.driver_remove(path)
+                    curve = subject.driver_add(path)
+                    driver = curve.driver
+                    driver.type = 'SCRIPTED'
+                    var = driver.variables.new()
+                    targs = var.targets[0]
+                    targs.id_type = 'OBJECT'
+                    targs.id = obj
+                    targs.data_path = f'["{menu.name}"]'
+                    driver.expression = f'var != {n}'
+            
+            if obj.get(menu.name):
+                del obj[menu.name]
+            
+            ui_settings = obj.id_properties_ui(menu.name)
+            ui_settings.update(
+                min=0,
+                max=len(enum_items)-1,
+                items=enum_items
+            )
+
+        self.report({'INFO'}, "Access the visiblity switch(es) via the object's custom properties")
+        return {'FINISHED'}
+
 classes = [
-    RIGIALL_OT_make_bones_renderable
+    RIGIALL_OT_make_bones_renderable,
+    RIGIALL_OT_bodygroup_menu_add,
+    RIGIALL_OT_bodygroup_menu_remove,
+    RIGIALL_OT_bodygroup_menu_edit,
+    RIGIALL_OT_bodygroup_menu_back,
+    RIGIALL_OT_bodygroup_item_add,
+    RIGIALL_OT_bodygroup_item_remove,
+    RIGIALL_OT_bodygroup_item_move,
+    RIGIALL_OT_bodygroup_single_menu_build,
+    RIGIALL_OT_bodygroup_menus_build
 ]
 
 r, ur = bpy.utils.register_classes_factory(classes)

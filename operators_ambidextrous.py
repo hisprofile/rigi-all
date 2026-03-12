@@ -28,7 +28,7 @@ def determine_side(props, bone: bpy.types.PoseBone):
             return side[pos[1] <= 0]
 
 
-class rigiall_ot_makearms(Operator):
+class RIGIALL_OT_makearms(Operator):
     bl_idname = 'rigiall.makearms'
     bl_label = 'Make Arms'
     bl_description = 'Select multiple bone chains to turn them into Rigify arms'
@@ -47,7 +47,6 @@ class rigiall_ot_makearms(Operator):
         left_col = col.get('Arm.L (IK)')
         right_col = col.get('Arm.R (IK)')
         bone_chains = get_bone_chains(context)
-        all_bones = [bone for chain in bone_chains for bone in chain]
 
         for chain in bone_chains:
             try:
@@ -56,18 +55,21 @@ class rigiall_ot_makearms(Operator):
                 self.report({'ERROR'}, f'Chain stemming from {chain[0].name} needs three bones!')
                 return {'CANCELLED'}
         
-        for bone in all_bones:
-            mark(bone)
-            side = determine_side(props, chain[0])
-            
-            for col in bone.bone.collections:
-                col.unassign(bone)
+            for bone in chain:
+                mark(bone)
+                side = determine_side(props, chain[0])
+                
+                for col in bone.bone.collections:
+                    col.unassign(bone)
 
-            if side is left:
-                left_col.assign(bone)
-            if side is right:
-                right_col.assign(bone)
+                if side is left:
+                    left_col.assign(bone)
+                if side is right:
+                    right_col.assign(bone)
         
+        use_mirror = obj.data.use_mirror_x
+        obj.data.use_mirror_x = False
+
         for chain in bone_chains:
             side = determine_side(props, chain[0])
             bone_list = tuple((bone.name for bone in chain))
@@ -96,10 +98,10 @@ class rigiall_ot_makearms(Operator):
             else:
                 self.report({'WARNING'}, 'Rigify is not enabled, limb generation could not be completed!')
 
+        obj.data.use_mirror_x = use_mirror
         return {'FINISHED'}
 
-class rigiall_ot_makelegs(generictext):
-    
+class RIGIALL_OT_makelegs(generictext):
     bl_idname = 'rigiall.makelegs'
     bl_label = 'Make Legs'
     bl_description = 'Select a chain of bones to make them a Rigify leg'
@@ -136,12 +138,18 @@ class rigiall_ot_makelegs(generictext):
         col = context.object.data.collections_all
         bone_chains = get_bone_chains(context)
 
+        left_col = col.get('Leg.L (IK)')
+        right_col = col.get('Leg.R (IK)')
+
         for chain in bone_chains:
             try:
                 assert len(chain) == 4
             except AssertionError:
                 self.report({'ERROR'}, f'Chain stemming from {chain[0].name} to needs four bones!')
                 return {'CANCELLED'}
+            
+        use_mirror = obj.data.use_mirror_x
+        obj.data.use_mirror_x = False
         
         all_verts = np.zeros((0, 4), dtype=np.float32)
         vertex_groups = defaultdict(lambda: np.zeros(0, dtype=np.float32))
@@ -160,9 +168,21 @@ class rigiall_ot_makelegs(generictext):
                 toe_vg_array = np.array([next(filter(lambda a: a.group == toe_vg, v.groups), null).weight for v in child.data.vertices], dtype=np.float32)
                 current_groups.extend([(chain[2].name, foot_vg_array), (chain[3].name, toe_vg_array)])
 
+                side = determine_side(props, chain[0])
+                for bone in chain:
+                    mark(bone)
+
+                    for col in bone.bone.collections:
+                        col.unassign(bone)
+
+                    if side is left:
+                        left_col.assign(bone)
+                    if side is right:
+                        right_col.assign(bone)
+
             if not any([array.max() > 0 for name, array in current_groups]):
                 continue
-        
+
             for name, array in current_groups:
                 vertex_groups[name] = np.append(vertex_groups[name], array)
 
@@ -181,27 +201,11 @@ class rigiall_ot_makelegs(generictext):
 
         all_verts = all_verts.reshape((-1, 4))
 
-        left_col = col.get('Leg.L (IK)')
-        right_col = col.get('Leg.R (IK)')
-        all_bones = [bone for chain in bone_chains for bone in chain]
-
-        for bone in all_bones:
-            mark(bone)
-            side = determine_side(props, chain[0])
-            
-            for col in bone.bone.collections:
-                col.unassign(bone)
-
-            if side is left:
-                left_col.assign(bone)
-            if side is right:
-                right_col.assign(bone)
-
         edits: bpy.types.ArmatureEditBones = obj.data.edit_bones
         
         for chain in bone_chains:
-            mode(mode='EDIT')
             side = determine_side(props, chain[0])
+            mode(mode='EDIT')
 
             bone_list = tuple((bone.name for bone in chain))
 
@@ -294,9 +298,11 @@ class rigiall_ot_makelegs(generictext):
                     tweak_col.name = 'Leg.R (Tweak)'
             else:
                 self.report({'WARNING'}, 'Rigify is not enabled, limb generation could not be completed!')
+
+        obj.data.use_mirror_x = use_mirror
         return {'FINISHED'}    
 
-class rigiall_ot_makefingers(generictext):
+class RIGIALL_OT_makefingers(generictext):
     
     bl_idname = 'rigiall.makefingers_ambi'
     bl_label = 'Make Fingers'
@@ -343,6 +349,9 @@ class rigiall_ot_makefingers(generictext):
 
             bone_col['Fingers'].assign(bone)
             
+        use_mirror = obj.data.use_mirror_x
+        obj.data.use_mirror_x = False
+
         mode(mode='EDIT')
         edits = obj.data.edit_bones
         
@@ -367,9 +376,11 @@ class rigiall_ot_makefingers(generictext):
             self.report({'INFO'}, 'Fingers generated!')
         else:
             self.report({'WARNING'}, 'Rigify is not enabled, limb generation could not be completed!')
+        
+        obj.data.use_mirror_x = use_mirror
         return {'FINISHED'}
 
-class rigiall_ot_makeshoulders(Operator):
+class RIGIALL_OT_makeshoulders(Operator):
     
     bl_idname = 'rigiall.makeshoulders'
     bl_label = 'Make Shoulders'
@@ -398,7 +409,7 @@ class rigiall_ot_makeshoulders(Operator):
 
         for bone in all_bones:
             mark(bone)
-            side = determine_side(props, bone)
+            #side = determine_side(props, bone)
             
             for col in bone.bone.collections:
                 col.unassign(bone)
@@ -418,7 +429,7 @@ class rigiall_ot_makeshoulders(Operator):
                 self.report({'WARNING'}, 'Rigify is not enabled, limb generation could not be completed!')
         return {'FINISHED'}
 
-class rigiall_ot_make_generic_chain(Operator):
+class RIGIALL_OT_make_generic_chain(Operator):
     bl_idname = 'rigiall.make_generic_chain'
     bl_label = 'Make Generic Chain'
     bl_description = 'Quickly make a chain of bones with the active selection'
@@ -470,11 +481,11 @@ class rigiall_ot_make_generic_chain(Operator):
         return {'FINISHED'}
 
 classes = [
-    rigiall_ot_makearms,
-    rigiall_ot_makelegs,
-    rigiall_ot_makefingers,
-    rigiall_ot_makeshoulders,
-    rigiall_ot_make_generic_chain,
+    RIGIALL_OT_makearms,
+    RIGIALL_OT_makelegs,
+    RIGIALL_OT_makefingers,
+    RIGIALL_OT_makeshoulders,
+    RIGIALL_OT_make_generic_chain,
 ]
 
 r, ur = register_classes_factory(classes)

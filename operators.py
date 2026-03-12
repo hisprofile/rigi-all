@@ -34,7 +34,7 @@ class generictext(Operator):
     url: StringProperty(default='')
     mode: BoolProperty()
 
-    def invoke(self, context, event):
+    def invoke(self, context: bpy.types.Context, event):
         if not getattr(self, 'prompt', True):
             return self.execute(context)
         self.mode = False
@@ -45,30 +45,33 @@ class generictext(Operator):
         return_val = self.invoke_extra(context, event)
         return context.window_manager.invoke_props_dialog(self, width=self.width)
     
-    def invoke_extra(self, context, event):
+    def invoke_extra(self, context: bpy.types.Context, event):
         pass
+
+    def draw_boxes(self, layout, sentences, icons, sizes):
+        for sentence, icon, size in zip(sentences, icons, sizes):
+            textBox(layout, sentence, icon, int(size))
     
-    def draw(self, context):
+    def draw(self, context: bpy.types.Context):
         sentences = self.text.split('\n')
         icons = self.icons.split(',')
         sizes = self.size.split(',')
         if self.text != '':
-            for sentence, icon, size in zip(sentences, icons, sizes):
-                textBox(self.layout, sentence, icon, int(size))
+            self.draw_boxes(self.layout, sentences, icons, sizes)
         self.draw_extra(context)
 
-    def draw_extra(self, context):
+    def draw_extra(self, context: bpy.types.Context):
         pass
 
-    def execute(self, context):
+    def execute(self, context: bpy.types.Context):
         return {'FINISHED'}
 
-class rigiall_ot_genericText(generictext):
+class RIGIALL_OT_genericText(generictext):
     bl_idname = 'rigiall.textbox'
     bl_label = 'Hints'
     bl_description = 'A window will display any possible questions you have'
 
-class rigiall_ot_makeArm(Operator):
+class RIGIALL_OT_makearm(Operator):
     
     bl_idname = 'rigiall.makearm'
     bl_label = 'Make Arm'
@@ -135,7 +138,7 @@ class rigiall_ot_makeArm(Operator):
 
         return {'FINISHED'}
     
-class rigiall_ot_makeLeg(generictext):
+class RIGIALL_OT_makeleg(generictext):
     
     bl_idname = 'rigiall.makeleg'
     bl_label = 'Make leg'
@@ -327,7 +330,7 @@ class rigiall_ot_makeLeg(generictext):
             self.report({'WARNING'}, 'Rigify is not enabled, limb generation could not be completed!')
         return {'FINISHED'}
         
-class rigiall_ot_makeSpine(generictext):
+class RIGIALL_OT_makespine(generictext):
     
     bl_idname = 'rigiall.makespine'
     bl_label = 'Make Spine'
@@ -371,7 +374,7 @@ class rigiall_ot_makeSpine(generictext):
             self.report({'WARNING'}, 'Rigify is not enabled, limb generation could not be completed!')
         return {'FINISHED'}
     
-class rigiall_ot_makeNeck(Operator):
+class RIGIALL_OT_makeneck(Operator):
     
     bl_idname = 'rigiall.makeneck'
     bl_label = 'Make Neck/Head'
@@ -412,7 +415,7 @@ class rigiall_ot_makeNeck(Operator):
             self.report({'WARNING'}, 'Rigify is not enabled, limb generation could not be completed!')
         return {'FINISHED'}
     
-class rigiall_ot_makeFingers(generictext):
+class RIGIALL_OT_makefingers(generictext):
     
     bl_idname = 'rigiall.makefingers'
     bl_label = 'Make Fingers'
@@ -484,7 +487,7 @@ class rigiall_ot_makeFingers(generictext):
             self.report({'WARNING'}, 'Rigify is not enabled, limb generation could not be completed!')
         return {'FINISHED'}
     
-class rigiall_ot_90roll(Operator):
+class RIGIALL_OT_90roll(Operator):
     bl_idname = 'rigiall.adjustroll'
     bl_label = 'Adjust Roll by 90°'
     bl_description = 'Adjust roll by 90° or -90°'
@@ -503,17 +506,29 @@ class rigiall_ot_90roll(Operator):
     
     def execute(self, context):
         from mathutils import Matrix
-        bones = [i.name for i in context.selected_pose_bones]
+        from .main import swap_name
+        bones = set([i.name for i in context.selected_pose_bones])
         mode(mode='EDIT')
         edits = context.object.data.edit_bones
+        
         for bone in bones:
             bone = edits[bone]
             bone.matrix = bone.matrix @ Matrix.Rotation(self.roll, 4, self.axis)
-            #edits[bone].roll += math.radians(self.roll)
+
+        if context.object.data.use_mirror_x:
+            mirror_x = Matrix.Scale(-1, 4, (1, 0, 0))
+            for bone in bones:
+                opposite = swap_name(bone)
+                if opposite in bones: continue
+                if not opposite in edits: continue
+                bone = edits[bone]
+                opposite = edits[opposite]
+                opposite.matrix = mirror_x @ bone.matrix @ mirror_x
+
         mode(mode='POSE')
         return {'FINISHED'}
         
-class rigiall_ot_0roll(Operator):
+class RIGIALL_OT_0roll(Operator):
     bl_idname = 'rigiall.noroll'
     bl_label = 'Set Roll to 0°'
     bl_description = "Sets a bone's roll to 0°"
@@ -528,7 +543,7 @@ class rigiall_ot_0roll(Operator):
         mode(mode='POSE')
         return {'FINISHED'}        
         
-class rigiall_ot_makeShoulder(Operator):
+class RIGIALL_OT_makeshoulder(Operator):
     
     bl_idname = 'rigiall.makeshoulder'
     bl_label = 'Make Shoulders'
@@ -563,7 +578,7 @@ class rigiall_ot_makeShoulder(Operator):
         return {'FINISHED'}
 
 
-class rigiall_ot_makeExtras(Operator):
+class RIGIALL_OT_makeextras(Operator):
     bl_idname = 'rigiall.extras'
     bl_label = 'Make Extras (Do this last!)'
     bl_description = 'Preserve all unmodified bones when generating the rig. Do this last'
@@ -622,7 +637,7 @@ class rigiall_ot_makeExtras(Operator):
             
         return {'FINISHED'}
 
-class rigiall_ot_extras_manual(Operator):
+class RIGIALL_OT_extras_manual(Operator):
     bl_idname = 'rigiall.extras_manual'
     bl_label = 'Make Selected Extras'
     bl_description = 'Preserve all unmodified bones when generating the rig.'
@@ -701,7 +716,7 @@ def textBox(self, sentence, icon='NONE', line=56):
                 layout.row().label(text=mix)
                 return None
 
-class rigiall_ot_initialize(generictext):
+class RIGIALL_OT_initialize(Operator):
     bl_idname = 'rigiall.init'
     bl_label = 'Initialize Rig'
     bl_description = 'Initialize the rig with bonegroups and assigned layers.'
@@ -719,8 +734,17 @@ class rigiall_ot_initialize(generictext):
         if context.object.get('rig_ui'): return False
         return True
     
-    def draw_extra(self, context):
-        self.layout.prop(self, 'preserve_original_bones')
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, context):
+        row = self.layout.row()
+        row.prop(self, 'preserve_original_bones')
+        op = row.operator('rigiall.textbox', text='', icon='QUESTION')
+        op.text = '''"Preserve Original Bones" makes it possible for accessories for the rig to attach to a Rigify rig after one has been generated. Leave disabled if the rig in question has no accessories.'''
+        op.size = '56'
+        op.icons = 'GROUP_BONE'
+        op.width = 310
 
     def execute(self, context):
         try:
@@ -730,7 +754,11 @@ class rigiall_ot_initialize(generictext):
             return {'CANCELLED'}
         for x in range(16):
             bpy.ops.armature.rigify_collection_add_ui_row(row=1, add=True)
-            
+
+        mode_bak = context.object.mode
+        
+        data = context.object.data
+
         layers = (
             ("Torso", "Special", 1, ""),
             ("Torso (Tweak)", "Tweak", 2, "(Tweak)"),
@@ -752,12 +780,17 @@ class rigiall_ot_initialize(generictext):
             ("Root", "Root", 16, ""),
         )
         for name, color, row, title in layers:
-            new = context.object.data.collections.new(name=name)
+            new = data.collections.get(name, None) or data.collections.new(name=name)
             new.rigify_color_set_name = color
             new.rigify_ui_row = row
             new.rigify_ui_title = title
 
         if self.preserve_original_bones:
+            
+            # This is useful if we want a rigify rig, but we also want to keep the original bone orientations and their names.
+            # An example use case is the TF2-Trifecta. The included mercenary rigs all use Rigify, but the bones
+            # from the original rig are all kept so we can attach the many cosmetics with no problem, and with nothing more
+            # than copy location and rotation constraints.
             obj = context.object
             #obj_copy = obj.copy()
             obj_data_name = obj.data.name
@@ -798,8 +831,6 @@ class rigiall_ot_initialize(generictext):
         finalize_script = initialize_finalize_script(context)
         context.object.data.rigify_finalize_script = finalize_script
 
-        mode_bak = context.object.mode
-        
         mode(mode='EDIT')
 
         for bone in context.object.data.edit_bones:
@@ -809,10 +840,8 @@ class rigiall_ot_initialize(generictext):
         context.object.data['RIGI-ALL_INITIALIZED'] = True
 
         return {'FINISHED'}
-    
 
-
-class rigiall_ot_fix_symmetry_name(Operator):
+class RIGIALL_OT_fix_symmetry_name(Operator):
     bl_idname = 'rigiall.fix_symmetry_name'
     bl_label = 'Fix Symmetry Name'
     bl_description = 'Formats bone names to be compatible with symmetry posing'
@@ -842,78 +871,62 @@ class rigiall_ot_fix_symmetry_name(Operator):
         
         return {'FINISHED'}
 
-# This is useful if we want a rigify rig, but we also want to keep the original bone orientations and their names.
-# An example use case is the TF2-Trifecta. The included mercenary rigs all use Rigify, but the bones
-# from the original rig are all kept so we can attach the many cosmetics with no problem, and with nothing more
-# than copy location and rotation constraints.
 
-class RIGIALL_OT_preserve_bones(Operator):
-    bl_idname = 'rigiall.preserve_bones'
-    bl_label = 'Preserve Original Bones'
-    bl_description = 'Keep the original bones under the meta-rig, in case they are needed by other armatures. This should be done first!'
-
+class RIGIALL_OT_extend_to_child(Operator):
+    bl_idname = 'rigiall.extend_to_child'
+    bl_label = 'Extend to Child'
+    bl_description = 'Extend the tail of the bone to the head of its child'
     bl_options = {'UNDO'}
 
     @classmethod
     def poll(cls, context):
-        return (getattr(context.object, 'type', '') == 'ARMATURE') and (context.object.data.collections_all.get('overlaying') == None) and (context.object.data.get('rig_id') == None)
-
+        return (getattr(context.object, 'mode', '') == 'POSE') and len(context.selected_pose_bones) in {1, 2}
+    
     def execute(self, context):
-        obj = context.object
-        if obj.data.collections_all.get('overlaying'):
-            self.report({'ERROR'}, 'Armature bones have already been preserved!')
-        #obj_copy = obj.copy()
-        obj_data_name = obj.data.name
-        obj_data_copy: bpy.types.Armature = obj.data.copy()
-        obj.data.name = '!'
-        obj_data_copy.name = obj_data_name
-        #obj.data = obj_data_copy
+        selected_bones: list = context.selected_pose_bones
+        if len(selected_bones) == 2:
+            parent, child = selected_bones.pop(0), selected_bones.pop(0)
+            if not child in parent.children:
+                self.report({'ERROR'}, 'Selected child bone is not directly a child of the parent bone!')
+                return {'CANCELLED'}
+        else:
+            parent = context.active_pose_bone
+            if len(parent.children) != 1:
+                self.report({'ERROR'}, 'Active bone has more than one child. Please select parent, then child.')
+                return {'CANCELLED'}
+            child = parent.children[0]
 
-        for bone in obj_data_copy.bones:
-            original_bone = bone.name
-            bone['original_bone'] = original_bone
-            bone.name = '!' + original_bone
-
-        obj.data = obj_data_copy
+        parent, child = parent.name, child.name
 
         mode(mode='EDIT')
+        edits = context.object.data.edit_bones
+        parent, child = edits[parent], edits[child]
 
-        ebones = obj.data.edit_bones
-        new_bones = list()
-        for bone in list(obj.data.edit_bones):
-            copy = ebones.new(bone['original_bone'])
-            new_bones.append(copy.name)
-            copy.head = bone.head
-            copy.tail = bone.tail
-            copy.roll = bone.roll
-            copy.parent = bone
+        if child.use_connect:
+            mode(mode='POSE')
+            return {'CANCELLED'}
 
-        mode(mode='OBJECT')
+        parent.tail = child.head
 
-        overlaying = obj_data_copy.collections.new('overlaying')
-        overlaying.is_visible = False
-        [overlaying.assign(obj_data_copy.bones[bone]) for bone in new_bones]
-
-        self.report({'INFO'}, 'Original bones have been preserved! Please proceed with limb generation.')
+        mode(mode='POSE')
         return {'FINISHED'}
-
-
         
-classes = [rigiall_ot_makeArm,
-    rigiall_ot_makeFingers,
-    rigiall_ot_makeNeck,
-    rigiall_ot_makeShoulder,
-    rigiall_ot_makeSpine,
-    rigiall_ot_makeLeg,
-    rigiall_ot_makeExtras,
-    rigiall_ot_extras_manual,
-    rigiall_ot_initialize,
-    rigiall_ot_90roll,
-    rigiall_ot_0roll,
-    rigiall_ot_genericText,
-    rigiall_ot_fix_symmetry_name,
-    RIGIALL_OT_preserve_bones,
-    ]
+classes = [
+    RIGIALL_OT_makearm,
+    RIGIALL_OT_makefingers,
+    RIGIALL_OT_makeneck,
+    RIGIALL_OT_makeshoulder,
+    RIGIALL_OT_makespine,
+    RIGIALL_OT_makeleg,
+    RIGIALL_OT_makeextras,
+    RIGIALL_OT_extras_manual,
+    RIGIALL_OT_initialize,
+    RIGIALL_OT_90roll,
+    RIGIALL_OT_0roll,
+    RIGIALL_OT_genericText,
+    RIGIALL_OT_fix_symmetry_name,
+    RIGIALL_OT_extend_to_child,
+]
 
 r, ur = bpy.utils.register_classes_factory(classes)
 

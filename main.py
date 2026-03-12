@@ -1,7 +1,7 @@
 import bpy
 from bpy.types import PropertyGroup, AddonPreferences
 from bpy.utils import register_classes_factory
-from bpy.props import (BoolProperty, StringProperty, PointerProperty, EnumProperty, FloatProperty)
+from bpy.props import (BoolProperty, StringProperty, PointerProperty, EnumProperty, FloatProperty, CollectionProperty, IntProperty)
 from .panel import RIGIALL_PT_panel
 
 symmetries = [
@@ -13,7 +13,15 @@ symmetries = [
 ]
 symmetry_swap = {a: b for a, b in symmetries for a, b in [(a, b), (b, a)]}
 symmetries_unraveled = [side for pair in symmetries for side in pair]
-    
+
+def swap_name(name: str):
+    for symmetry in symmetries_unraveled:
+        if name.endswith(symmetry):
+            return name.rstrip(symmetry) + symmetry_swap[symmetry]
+        if name.startswith(symmetry):
+            return symmetry_swap[symmetry] + name.lstrip(symmetry)
+    return ''
+
 def get_bone_chains(context: bpy.types.Context, get_symmetry: bool = True) -> list[list[bpy.types.PoseBone]]:
     props = context.window_manager.rigiall_props
     all_chains = []
@@ -87,11 +95,16 @@ def initialize_wire_to_curve(context: bpy.types.Context):
     import os
     root = os.path.dirname(__file__)
     blend_data = context.blend_data
-    if (ng := blend_data.node_groups.get('Rigi-All Wire to Curve')):
-        return ng
-    
-    with bpy.data.libraries.load(os.path.join(root, 'assets', 'wire_to_curve.blend')) as (src, dst):
-        dst.node_groups = ['Rigi-All Wire to Curve']
+    if bpy.app.version >= (4, 5, 0):
+        if (ng := blend_data.node_groups.get('Rigi-All Wire to Curve')):
+            return ng
+        with bpy.data.libraries.load(os.path.join(root, 'assets', 'make_bones_renderable_wire_to_curve.blend')) as (src, dst):
+            dst.node_groups = ['Rigi-All Wire to Curve']
+    else:
+        if (ng := blend_data.node_groups.get('Rigi-All Wire to Curve -4.5')):
+            return ng
+        with bpy.data.libraries.load(os.path.join(root, 'assets', 'make_bones_renderable_wire_to_curve.blend')) as (src, dst):
+            dst.node_groups = ['Rigi-All Wire to Curve -4.5']
 
     ng: bpy.types.GeometryNodeTree = dst.node_groups[0]
     ng.nodes['CURVE_THICKNESS'].inputs[1].default_value = context.window_manager.rigiall_props.wire_thickness
@@ -140,24 +153,26 @@ class rigiall_group(PropertyGroup):
     parasite: PointerProperty(type=bpy.types.Object, poll=is_armature)
     host: PointerProperty(type=bpy.types.Object, poll=is_armature)
 
-    automatic_symmetry: BoolProperty(default=True, name='Automatic Symmetry', description='Speed up the rigging process by automatically determining which sides are right and left')
+    automatic_symmetry: BoolProperty(default=True, name='Auto-complete Other Side', description='Speed up the rigging process by automatically determining which sides are  ')
 
     symmetry_mode: EnumProperty(items=[
         ('X_POSITIVE', '+X', 'The right side of the armature is on the positive side of the X axis.'),
         ('X_NEGATIVE', '-X', 'The right side of the armature is on the negative side of the X axis.'),
-        ('Y_POSITIVE', '+Y', 'The right side of the armature is on the positive side of the Y axis.'),
-        ('Y_NEGATIVE', '-Y', 'The right side of the armature is on the negative side of the Y axis.'),
+        #('Y_POSITIVE', '+Y', 'The right side of the armature is on the positive side of the Y axis.'),
+        #('Y_NEGATIVE', '-Y', 'The right side of the armature is on the negative side of the Y axis.'),
         ],
-        name='Symmetry Mode',
-        description='Set the symmetry mode for automatic limb assignments. The right side of the rig should be on this side of this axis',
+        name='Right side of the rig is on...',
+        description='The right side of the rig should be on this side of this axis',
         default='X_NEGATIVE'
     )
 
     view: EnumProperty(
         items=(
-            ('RIGGING', 'Rigging', 'View the rigging tools'),
-            ('CLEAN_UP', 'Clean up', 'View the clean up tools'),
-            ('MISCELLANEOUS', 'Misc.', 'View miscellaneous tools')
+            ('RIGGING', 'Rigging', 'View the rigging tools', 'ARMATURE_DATA', 0),
+            ('CLEAN_UP', 'Clean up', 'View the clean up tools', 'BRUSH_DATA', 1),
+            ('MISCELLANEOUS', 'Misc.', 'View miscellaneous tools', 'DISC', 2),
+            #None,
+            #('SETTINGS', '', 'Settings', 'TOOL_SETTINGS', 3)
         ),
         name='View',
         description='Set the view mode for Rigi-All',
@@ -165,10 +180,73 @@ class rigiall_group(PropertyGroup):
     )
 
     wire_thickness: FloatProperty(name='Wire Thickness', default=0.05)
+
+class rigiall_bodygroup_item(PropertyGroup):
+    object: PointerProperty(
+        type=bpy.types.Object,
+        name='Object',
+        description="The object who's visibility will be controlled"
+    )
+    name: StringProperty(
+        name='Name',
+        description="Name of the visibility switch item. Object's name if empty",
+        default=''
+    )
+    description: StringProperty(
+        name='Description',
+        description='Description of the visibility switch item',
+        default=''
+    )
+    icon: StringProperty(
+        name='Icon',
+        description='Icon for the visibility switch item',
+        default=''
+    )
+
+
+class rigiall_bodygroup_menu(PropertyGroup):
+    name: StringProperty(
+        name='Property Name',
+        description='Name of the custom property to store this visibility switch on',
+        default='Visibility Switch'
+    )
+    menu_items: CollectionProperty(
+        type=rigiall_bodygroup_item,
+        name='Menu Items',
+        description='Menu items'
+    )
+
+class rigiall_bodygroup_helper(PropertyGroup):
+    bodygroup_menus: CollectionProperty(
+        type=rigiall_bodygroup_menu,
+        name='Bodygroup Menus',
+        description='Bodygroup menus'
+    )
+    index: IntProperty(options=set(), min=0)
+    active_item: IntProperty(default=-1, min=-1)
+
+    # for controller subjects
+    visibility_controller: PointerProperty(type=bpy.types.Object)
+    switch_name: StringProperty()
+
+    @classmethod
+    def register(cls):
+        bpy.types.Object.rigiall_bodygroup_helper = PointerProperty(
+            type=cls,
+            name='Rigi-All Bodygroup Helper',
+            description='Top-level container for all bodygroup menus & items'
+        )
     
+    @classmethod
+    def unregister(cls):
+        del bpy.types.Object.rigiall_bodygroup_helper
+
 classes = [
     rigiall_prefs,
-    rigiall_group
+    rigiall_group,
+    rigiall_bodygroup_item,
+    rigiall_bodygroup_menu,
+    rigiall_bodygroup_helper,
 ]
 
 r, ur = register_classes_factory(classes)
